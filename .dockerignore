@@ -9,3 +9,5 @@ coverage
 .agents
 .codex
 supabase
+
+dist-tools

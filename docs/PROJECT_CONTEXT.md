@@ -82,9 +82,11 @@ global markets.”
 - `drizzle/0000_postgres_baseline.sql` recreates the full content schema, original
   seed data, indexes, constraints, triggers, and adapted RLS without Supabase.
   Future schema changes start in `lib/db/schema.ts` with reviewed Drizzle SQL.
-- Dokploy deploys `docker-compose.yml`: PostgreSQL, a one-shot migration service,
-  and a non-root standalone Next.js web service. Only the migration service gets
-  owner credentials. Back up both PostgreSQL and the upload volume.
+- Dokploy deploys the root `Dockerfile` as a single Application. `DATABASE_URL`
+  points to the user's existing PostgreSQL service. The image runs migrations
+  before starting Next.js; it does not provision a PostgreSQL service or an
+  additional database login. All queries still select restricted roles inside
+  transactions. Persist `/app/data/uploads` with a Dokploy volume mount.
 - The Supabase import command supports a dry run, preserves IDs and password
   hashes, copies files, and rewrites public file URLs. See `docs/DEPLOYMENT.md`.
 - Original migrations remain archived under `docs/legacy-supabase/` for audit

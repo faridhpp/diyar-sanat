@@ -6,7 +6,7 @@ import { repository } from '../lib/db/query';
 import { backend,getPool,withAccess } from '../lib/db/connection';
 import { createStaffAccount } from '../lib/auth/accounts';
 import { verifyPassword, validPassword } from '../lib/auth/password';
-import { takeRateLimit } from '../lib/auth/security';
+import { sameOrigin, takeRateLimit } from '../lib/auth/security';
 import { filePath,storage } from '../lib/storage/files';
 
 const databaseTest=process.env.TEST_DATABASE_URL?test:test.skip;
@@ -16,6 +16,18 @@ after(async()=>{if(process.env.TEST_DATABASE_URL)await getPool().end();});
 test('upload paths cannot escape a known bucket',()=>{
   for(const path of ['../outside','/absolute','a/../../outside','a\\b','a//b','a/%2e%2e/b'])assert.throws(()=>filePath('site-media',path));
   assert.throws(()=>filePath('unknown','file.pdf'));
+});
+test('origin checks work with only DATABASE_URL configured and reject other hosts',()=>{
+  const previous=process.env.APP_URL;delete process.env.APP_URL;
+  try {
+    const request=(origin:string)=>new Request('http://internal:3000/api/auth/password',{headers:{Host:'site.example',Origin:origin}});
+    assert.equal(sameOrigin(request('https://site.example')),true);
+    assert.equal(sameOrigin(request('https://evil.example')),false);
+    assert.equal(sameOrigin(request('null')),false);
+    process.env.APP_URL='https://pinned.example';
+    assert.equal(sameOrigin(request('https://site.example')),false);
+    assert.equal(sameOrigin(request('https://pinned.example')),true);
+  }finally{if(previous===undefined)delete process.env.APP_URL;else process.env.APP_URL=previous;}
 });
 test('password policy rejects short and bcrypt-truncated passwords',()=>{
   assert.equal(validPassword('Short1!'),false);

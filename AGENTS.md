@@ -30,9 +30,11 @@ IDE agents, and human contributors.
 - All exposed tables require explicit grants and Row Level Security. Never use a
   service-role or secret key in browser code, and never use user-editable
   metadata for authorization.
-- The production target is Dokploy Docker Compose with PostgreSQL 17, a
-  standalone Next.js container, and persistent database/upload volumes. Runtime
-  uses the restricted `diyar_app` login; migrations use a separate owner URL.
+- The production target is a single Dokploy Dockerfile application using the
+  existing external PostgreSQL service through `DATABASE_URL`. The image runs
+  migrations on startup, then starts standalone Next.js. Do not add a Compose
+  stack or provision another database/login. All application queries retain
+  transaction-local restricted roles and RLS. Persist `/app/data/uploads`.
   Archived Supabase migrations in `docs/legacy-supabase/` are historical only.
 - Prefer Server Components. Add Client Components only at interactive
   boundaries. Keep database access in `lib/` and presentation in `components/`.

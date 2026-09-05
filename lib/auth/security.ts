@@ -2,8 +2,15 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { backend } from '../db/connection';
 export function sameOrigin(request:Request) {
-  const expected=process.env.APP_URL || (process.env.NODE_ENV!=='production'?new URL(request.url).origin:'');
-  return Boolean(expected && request.headers.get('origin')===new URL(expected).origin);
+  try {
+    const origin=request.headers.get('origin');
+    if(!origin)return false;
+    const parsed=new URL(origin);
+    if(!['http:','https:'].includes(parsed.protocol))return false;
+    if(process.env.APP_URL)return origin===new URL(process.env.APP_URL).origin;
+    // Dokploy/Traefik forwards the public Host. Browser requests cannot spoof it.
+    return parsed.host===request.headers.get('host');
+  } catch {return false;}
 }
 export async function takeRateLimit(identifier:string,max=10,seconds=900) {
   const key=createHash('sha256').update(identifier).digest('hex');

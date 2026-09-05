@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "test": "tsx --test tests/*.test.ts",
-    "db:import": "tsx scripts/import-supabase.ts"
+    "db:import": "tsx scripts/import-supabase.ts",
+    "build:tools": "node scripts/bundle-tools.mjs"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",
@@ -32,6 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "0.31.10",
+    "esbuild": "0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",

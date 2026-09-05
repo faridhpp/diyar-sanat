@@ -3,6 +3,36 @@
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 
+## 2026-09-05 — Single Dockerfile deployment with existing Dokploy PostgreSQL
+
+- Replaced the Compose deployment with one Dockerfile application connected to
+  the user's existing PostgreSQL service. Removed `docker-compose.yml` and the
+  separate migration/tools image. `DATABASE_URL` is the only required runtime
+  environment variable; there is no second database password to configure.
+- Bundled migration and bootstrap tools into the non-root production image.
+  Startup applies pending Drizzle migrations under the existing advisory lock,
+  starts Next.js only on success, and forwards termination signals. Repeated
+  startup reuses the migration journal. Added an application healthcheck.
+- Migration CLI and Drizzle config accept `DATABASE_URL`; the previous admin URL
+  remains an optional CLI override. Removed the separate application-password
+  rotation step. Existing transaction-local database roles and RLS remain in
+  force for application queries with the supplied connection.
+- Made `APP_URL` optional by checking request Origin against the public Host
+  forwarded by Dokploy; explicit origin pinning remains available. Added a
+  regression test for valid, invalid, and explicitly pinned origins.
+- Updated `.env.example`, Dockerfile, package/lock/build scripts, generated-tool
+  ignore rules, README, deployment guide, project context, and contributor rules.
+  The guide covers the existing database URL, Dockerfile build type, port 3000,
+  persistent uploads mount, and bundled first-manager command.
+- Verification: Docker image builds without database build arguments; fresh
+  container startup against a separate PostgreSQL 17 service succeeds with only
+  DATABASE_URL; restart migrations and bundled manager bootstrap pass. Six
+  applicable database/security/HTTP tests pass, including both locales, admin
+  pages, login/OTP/logout, uploads, and all submission forms; the unchanged
+  source-import test was skipped in this deployment-only pass. TypeScript and
+  lint pass (five existing image-optimization warnings). No remote deployment
+  or production database changes were performed.
+
 ## 2026-09-05 — PostgreSQL/Drizzle backend and Dokploy deployment on `next`
 
 - Created the requested `next` branch and replaced Bun with pnpm 10.32.1,

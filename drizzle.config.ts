@@ -7,5 +7,5 @@ export default defineConfig({
   out: './drizzle',
   introspect: { casing: 'preserve' },
   schemaFilter: ['public', 'private'],
-  dbCredentials: { url: process.env.DATABASE_ADMIN_URL ?? '' },
+  dbCredentials: { url: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || '' },
 });
