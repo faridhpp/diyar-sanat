@@ -16,23 +16,24 @@ IDE agents, and human contributors.
 
 ## Non-negotiable engineering rules
 
-- Bun is the only JavaScript package manager. Use `bun add`, `bun remove`, and
-  `bun run`; commit `bun.lock`; never create `package-lock.json`, `yarn.lock`, or
-  `pnpm-lock.yaml`.
+- pnpm is the only JavaScript package manager on this branch. Use `pnpm add`,
+  `pnpm remove`, and `pnpm run`; commit `pnpm-lock.yaml`. Do not create Bun, npm,
+  or Yarn lockfiles. This supersedes the original Bun convention.
 - Before editing Next.js code, read the relevant guide in
   `node_modules/next/dist/docs/` for the installed version.
 - Load and follow both Supabase agent skills in `.agents/skills/` before any
   Supabase or Postgres work.
-- Every database change starts in `supabase/migrations/`. Never make a
-  dashboard-only schema change. Update generated database types after schema
-  changes and verify the full migration chain with `bun run db:reset` when a
-  local container runtime is available.
+- PostgreSQL and Drizzle are the backend. Edit `lib/db/schema.ts`, generate and
+  review migrations in `drizzle/`, and run `pnpm db:migrate` on a fresh local
+  PostgreSQL database. Types are inferred from the Drizzle schema. Preserve
+  explicit grants, RLS, and handwritten functions/triggers in SQL migrations.
 - All exposed tables require explicit grants and Row Level Security. Never use a
   service-role or secret key in browser code, and never use user-editable
   metadata for authorization.
-- The production target includes self-hosted Supabase. Avoid cloud-only database
-  assumptions; migrations, seed data, and configuration must recreate the
-  required schema on a fresh compatible Supabase instance.
+- The production target is Dokploy Docker Compose with PostgreSQL 17, a
+  standalone Next.js container, and persistent database/upload volumes. Runtime
+  uses the restricted `diyar_app` login; migrations use a separate owner URL.
+  Archived Supabase migrations in `docs/legacy-supabase/` are historical only.
 - Prefer Server Components. Add Client Components only at interactive
   boundaries. Keep database access in `lib/` and presentation in `components/`.
 - The public website is locale-prefixed (`/fa`, `/en`), Persian is RTL, and all

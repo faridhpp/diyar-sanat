@@ -1,14 +1,14 @@
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { deleteBrand, saveBrand } from "./actions";
 
 type Props = { searchParams: Promise<{ error?: string; saved?: string; deleted?: string }> };
 
 export default async function BrandsPage({ searchParams }: Props) {
   const [{ profile }, query] = await Promise.all([requireStaff(), searchParams]);
-  const supabase = await createClient();
-  const { data: brandRows = [] } = await supabase.from("brands").select("id,code,is_published,position").order("position");
-  const { data: translationRows = [] } = brandRows?.length ? await supabase.from("brand_translations").select("brand_id,locale,name,slug,description").in("brand_id", brandRows.map(item => item.id)) : { data: [] };
+  const database = await createClient();
+  const { data: brandRows = [] } = await database.from("brands").select("id,code,is_published,position").order("position");
+  const { data: translationRows = [] } = brandRows?.length ? await database.from("brand_translations").select("brand_id,locale,name,slug,description").in("brand_id", brandRows.map(item => item.id)) : { data: [] };
   const brands: Brand[] = (brandRows ?? []).map(brand => ({ ...brand, brand_translations: (translationRows ?? []).filter(item => item.brand_id === brand.id) }));
   return <main className="admin-module-page admin-brands-page">
     <header><div><div><small>کاتالوگ</small><h1>برندها</h1><p>نام، ترجمه و وضعیت نمایش برندها</p></div></div></header>

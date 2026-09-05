@@ -3,6 +3,63 @@
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 
+## 2026-09-05 — PostgreSQL/Drizzle backend and Dokploy deployment on `next`
+
+- Created the requested `next` branch and replaced Bun with pnpm 10.32.1,
+  adding the pnpm lockfile as the dependency source of truth. Supabase JS,
+  SSR, and CLI packages are removed from the active application.
+- Ported all 37 public content tables and original seed records into the
+  PostgreSQL baseline, with four private authentication tables. Added Drizzle
+  schema definitions, inferred types, migration snapshots, pooled parameterized
+  queries, transaction-local visitor/staff roles, and explicit grants/RLS.
+  Owner credentials are confined to migration/import scripts. Original
+  Supabase migrations/configuration are archived in `docs/legacy-supabase/`.
+- Replaced Supabase Auth with bcrypt passwords, hashed opaque eight-hour
+  sessions, secure HttpOnly cookies, logout revocation, current profile checks,
+  transactional staff creation, manager-only settings updates, origin checks,
+  and database-backed login throttling. SMS verification uses expiring hashed
+  challenges, retry limits, and atomic single-use consumption with the existing
+  provider adapters. Staff creation supports normalized SMS phone numbers.
+- Replaced Storage with persistent filesystem buckets, upload validation,
+  public media streaming and byte ranges, and manager/admin-only document
+  downloads linked from the existing submission inboxes. All four public forms
+  retain their validation, database persistence, cleanup, and tracking codes.
+- Added a read-only-source Supabase import tool with dry-run inventory,
+  explicit target replacement, preserved IDs/password hashes/records,
+  staged file copying, public URL rewriting, and sequence repair. It invalidates
+  old sessions and requires a maintenance-window cutover to a separate target.
+- Added standalone build/start packaging, a non-root Docker image, and Compose
+  services for PostgreSQL, migrations, web, and optional manager bootstrap,
+  with healthchecks and persistent database/upload volumes. Setup, secrets,
+  source-data import, backup, and rollback are documented in `docs/DEPLOYMENT.md`.
+- Fixed inherited runtime issues found by the migration verification: upload
+  field rendering referenced browser `location` during SSR; nested gallery/file
+  folders were rejected by upload validation; homepage public policies called
+  a staff helper unavailable to visitors. Migration
+  `drizzle/0001_homepage_public_media.sql` corrects the latter without broadening
+  anonymous staff-helper access. Array parameters are explicitly bound in the
+  Drizzle repository, preserving representative facilities lists.
+- Affected: all data-backed public/admin routes, `lib/db`, `lib/auth`,
+  `lib/storage`, auth/settings/files/health APIs, upload/login/settings UI,
+  migration/import/bootstrap scripts, package/build/deployment configuration,
+  and contributor/product documentation. Public styling, RTL/LTR fonts,
+  business claims, and existing canonical-domain defaults remain intact.
+- Verification: fresh and repeated migration runs on PostgreSQL 17; no Drizzle
+  schema drift; TypeScript and production builds pass; lint passes with only
+  five existing admin image-optimization warnings. All six regression tests
+  pass together against a built production container, covering both locale
+  roots and public sections, 22 admin routes, CRUD/upserts/counts/search,
+  anonymous/draft and staff-role isolation, connection-context reset, password
+  login/logout, inactive users, concurrent OTP replay prevention, upload bytes
+  and ranges, all four persisted submission types, private document permissions,
+  and synthetic Supabase data/file/password import with unchanged source data.
+- Deployment verification: full fresh Docker Compose deployment succeeded;
+  migrations exited 0, PostgreSQL and web healthchecks are healthy, and
+  `/api/health` returned HTTP 200. The optional first-manager Compose bootstrap
+  also passed, including an empty optional phone value. No real production data was imported, no
+  remote deployment or branch push was performed, and actual SMS delivery
+  still requires the operator's provider credentials and template.
+
 ## 2026-08-07 — Vercel production build boundary fix
 
 - Fixed the failed production build caused by the client-side media archive importing runtime values from the server-only media data module.

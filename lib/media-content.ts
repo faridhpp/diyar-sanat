@@ -1,7 +1,7 @@
 import "server-only";
 import type { Locale } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/server";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { createClient } from "@/lib/db/server";
+import { hasDatabaseEnv } from "@/lib/db/env";
 
 export type MediaKind = "news" | "blog" | "tutorial";
 export type MediaArticle = {
@@ -322,7 +322,7 @@ function markdownSections(body: string) {
   return sections.length ? sections : [{ paragraphs: [] }];
 }
 export async function getMediaArticlesFromDatabase(locale: Locale) {
-  if (hasSupabaseEnv())
+  if (hasDatabaseEnv())
     try {
       const db = await createClient();
       const { data: entries, error } = await db

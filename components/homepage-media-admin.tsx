@@ -1,5 +1,5 @@
 import { AdminUploadField } from "@/components/admin-upload-field";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { getDictionary } from "@/lib/i18n";
 import { getManagedTranslations } from "@/lib/site-content";
 import { deleteHeroSlide, saveHeroSlide, saveHomepageVideo } from "@/app/admin/(panel)/content-settings-actions";

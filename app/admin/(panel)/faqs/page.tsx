@@ -1,6 +1,6 @@
 import { FileTextIcon } from "@/components/admin-icons";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { deleteFaq, saveFaq } from "../faq-actions";
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };

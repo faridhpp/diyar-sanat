@@ -5,7 +5,7 @@ import { FaqExplorer } from "@/components/support-tools";
 import { InnerPageHero } from "@/components/inner-page-hero";
 import { isLocale } from "@/lib/i18n";
 import { getManagedTranslations } from "@/lib/site-content";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 type Props = { params: Promise<{ lang: string }> };
 const faqFa = [

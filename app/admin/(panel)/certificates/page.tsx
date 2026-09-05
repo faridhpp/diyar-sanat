@@ -1,6 +1,6 @@
 import { AdminUploadField } from "@/components/admin-upload-field";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { createCertificate, deleteCertificate } from "../library-actions";
 
 type Certificate = { id: number; code: string; title_fa: string; title_en: string; issuer_fa: string | null; issuer_en: string | null; certificate_number: string; document_url: string | null; image_url: string | null; position: number; is_published: boolean };

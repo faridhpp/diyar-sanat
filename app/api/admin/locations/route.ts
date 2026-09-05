@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStaffUser } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 export async function GET(request:NextRequest){
   if(!await getStaffUser())return Response.json({error:"unauthorized"},{status:401});

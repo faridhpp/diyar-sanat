@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Diyar Sanat
 
-## Getting Started
+Bilingual Persian/English Next.js site and staff administration, backed by
+PostgreSQL 17 and Drizzle. Package manager: pnpm 10.32.1; runtime: Node.js 24.
 
-First, run the development server:
+## Development
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
+```sh
+pnpm install --frozen-lockfile
+cp .env.example .env
+# Fill in distinct database passwords and matching connection URLs.
+docker compose up -d postgres
+pnpm db:migrate
+pnpm db:bootstrap
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Compose keeps PostgreSQL on its internal network. For local CLI access, add a
+local Compose override mapping `127.0.0.1:5432:5432` to the postgres service, or
+use an existing local PostgreSQL 17 instance. The bootstrap command uses the
+`BOOTSTRAP_ADMIN_*` variables; remove them after the manager has been created.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sh
+pnpm typecheck
+pnpm lint
+pnpm test
+# Include database integration tests against a disposable migrated database:
+TEST_DATABASE_URL=postgresql://diyar_app:PASSWORD@localhost:5432/diyar_test pnpm test
+pnpm build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Database schema: `lib/db/schema.ts`. Change it, run `pnpm db:generate`, review
+SQL including grants and RLS, then run `pnpm db:migrate`. Functions, triggers,
+and role grants remain explicit SQL in migrations. Never use the owner
+connection for the web application.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[Dokploy deployment, existing-data import, backups, and rollback](docs/DEPLOYMENT.md).
+[Product context](docs/PROJECT_CONTEXT.md). [Development history](docs/DEVELOPMENT_LOG.md).

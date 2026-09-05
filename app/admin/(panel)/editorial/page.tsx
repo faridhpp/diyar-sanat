@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { deleteEditorial, saveEditorial, saveMediaCategory } from "./actions";
 type Props={searchParams:Promise<{error?:string;saved?:string;deleted?:string;edit?:string}>};
 type Translation={entry_id:number;locale:"fa"|"en";title:string;slug:string;excerpt:string|null;body_markdown:string;cta_label:string|null;seo_title:string|null;seo_description:string|null};

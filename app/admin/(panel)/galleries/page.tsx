@@ -1,6 +1,6 @@
 import { AdminUploadField } from "@/components/admin-upload-field";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { createAlbum, createGalleryItem, deleteAlbum, deleteGalleryItem } from "../library-actions";
 
 type Album={id:number;slug:string;title_fa:string;title_en:string;description_fa:string|null;description_en:string|null;cover_url:string|null;position:number;is_published:boolean};

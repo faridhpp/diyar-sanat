@@ -56,7 +56,7 @@ const dictionaries = {
       pageDescription:
         "چهار گروه محصول برای روانکاری، انتقال قدرت، ترمز و سامانه خنک‌کاری خودرو.",
       sampleNotice:
-        "محتوای نمونه محلی نمایش داده می‌شود. پس از اجرای migration و seed، همین صفحه مستقیماً از Supabase خوانده خواهد شد.",
+        "محتوای نمونه محلی نمایش داده می‌شود. پس از اجرای migration و seed، همین صفحه مستقیماً از PostgreSQL خوانده خواهد شد.",
       empty: "هنوز محصول منتشرشده‌ای برای این زبان ثبت نشده است.",
     },
     factory: {
@@ -135,7 +135,7 @@ const dictionaries = {
       pageDescription:
         "Four product groups for engine lubrication, transmissions, braking, and cooling systems.",
       sampleNotice:
-        "Local sample content is displayed. After the migration and seed run, this route reads the same model directly from Supabase.",
+        "Local sample content is displayed. After the migration and seed run, this route reads the same model directly from PostgreSQL.",
       empty: "No published products are available for this language yet.",
     },
     factory: {

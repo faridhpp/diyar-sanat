@@ -68,15 +68,27 @@ global markets.”
 
 - Next.js App Router, TypeScript strict mode, Tailwind CSS, Server Components by
   default, and locale-prefixed routing.
-- Supabase is the system of record. Public catalog reads use the publishable key;
-  privileged administration will use authenticated users plus database RLS.
-- Database workflow is imperative, timestamped migrations in
-  `supabase/migrations/`, with development seed data in `supabase/seed.sql`.
-- The initial catalog schema separates stable entities from localized copy, so
-  Persian and English can have independent slugs and content.
-- Keep the app deployable against hosted or self-hosted Supabase/Postgres. The
-  current self-hosting baseline is Postgres 17; review Supabase breaking changes
-  before upgrades.
+- PostgreSQL 17 is the system of record; Drizzle defines the schema, inferred
+  types, parameterized SQL, and migrations. pnpm is the package manager.
+- `lib/db/server.ts` provides a server-only repository for existing content
+  workflows. Every operation uses a pooled connection and a transaction-local
+  visitor/staff role plus a verified user ID; the original RLS policies remain
+  database-enforced. `lib/db/admin.ts` is limited to trusted server operations.
+- `lib/auth/` stores bcrypt passwords and hashed opaque session tokens in the
+  private schema. Roles and active status come from `profiles` on every request.
+  SMS login calls the existing Kavenegar, SMS.ir, or IPPanel adapters directly.
+- Files live in a persistent upload volume. `/api/files/` streams public media
+  with video range support and checks manager/admin access for private files.
+- `drizzle/0000_postgres_baseline.sql` recreates the full content schema, original
+  seed data, indexes, constraints, triggers, and adapted RLS without Supabase.
+  Future schema changes start in `lib/db/schema.ts` with reviewed Drizzle SQL.
+- Dokploy deploys `docker-compose.yml`: PostgreSQL, a one-shot migration service,
+  and a non-root standalone Next.js web service. Only the migration service gets
+  owner credentials. Back up both PostgreSQL and the upload volume.
+- The Supabase import command supports a dry run, preserves IDs and password
+  hashes, copies files, and rewrites public file URLs. See `docs/DEPLOYMENT.md`.
+- Original migrations remain archived under `docs/legacy-supabase/` for audit
+  and source-database comparison; they are not used by the running application.
 
 ## Source material
 

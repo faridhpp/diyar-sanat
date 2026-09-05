@@ -1,6 +1,6 @@
 import { FileTextIcon, GlobeIcon } from "@/components/admin-icons";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { saveTranslation } from "../content-settings-actions";
 import { HomepageMediaAdmin } from "@/components/homepage-media-admin";
 

@@ -1,5 +1,5 @@
 import {requireStaff} from "@/lib/admin/auth";
-import {createClient} from "@/lib/supabase/server";
+import {createClient} from "@/lib/db/server";
 import {deleteCategory,saveCategory} from "./actions";
 type Props={searchParams:Promise<{error?:string;saved?:string;deleted?:string}>};
 type Translation={locale:"fa"|"en";name:string;slug:string;description:string|null;seo_title:string|null;seo_description:string|null};
@@ -7,9 +7,9 @@ type Brand={id:number;code:string;name:string};
 type Category={id:number;brand_id:number;code:string;icon_key:string;accent_color:string;position:number;is_published:boolean;translations:Translation[]};
 
 export default async function ProductCategoriesPage({searchParams}:Props){
- const[{profile},query]=await Promise.all([requireStaff(),searchParams]);const supabase=await createClient();
- const[{data:brandRows=[]},{data:brandNames=[]},{data:categoryRows=[]}]=await Promise.all([supabase.from("brands").select("id,code").order("position"),supabase.from("brand_translations").select("brand_id,name").eq("locale","fa"),supabase.from("product_categories").select("id,brand_id,code,icon_key,accent_color,position,is_published").order("position")]);
- const{data:translations=[]}=categoryRows?.length?await supabase.from("product_category_translations").select("category_id,locale,name,slug,description,seo_title,seo_description").in("category_id",categoryRows.map(item=>item.id)):{data:[]};
+ const[{profile},query]=await Promise.all([requireStaff(),searchParams]);const database=await createClient();
+ const[{data:brandRows=[]},{data:brandNames=[]},{data:categoryRows=[]}]=await Promise.all([database.from("brands").select("id,code").order("position"),database.from("brand_translations").select("brand_id,name").eq("locale","fa"),database.from("product_categories").select("id,brand_id,code,icon_key,accent_color,position,is_published").order("position")]);
+ const{data:translations=[]}=categoryRows?.length?await database.from("product_category_translations").select("category_id,locale,name,slug,description,seo_title,seo_description").in("category_id",categoryRows.map(item=>item.id)):{data:[]};
  const brands:Brand[]=(brandRows??[]).map(item=>({...item,name:brandNames?.find(name=>name.brand_id===item.id)?.name||item.code}));
  const categories:Category[]=(categoryRows??[]).map(item=>({...item,translations:(translations??[]).filter(t=>t.category_id===item.id)}));
  return <main className="admin-module-page admin-categories-page"><header><div><div><small>کاتالوگ</small><h1>دسته‌های محصول</h1><p>ساختار محصولات بر اساس برند</p></div></div></header>

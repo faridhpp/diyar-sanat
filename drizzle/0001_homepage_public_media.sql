@@ -1,0 +1,2 @@
+ALTER POLICY "homepage_hero_slides_public_read" ON "homepage_hero_slides" TO app_staff,app_visitor USING (is_published);--> statement-breakpoint
+ALTER POLICY "homepage_video_public_read" ON "homepage_video" TO app_staff,app_visitor USING (is_published);

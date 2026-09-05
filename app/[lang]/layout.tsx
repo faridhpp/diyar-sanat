@@ -5,7 +5,7 @@ import { MobileNavigation } from "@/components/mobile-navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { directionFor, getDictionary, isLocale, locales } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import "../globals.css";
 
 export function generateStaticParams() {

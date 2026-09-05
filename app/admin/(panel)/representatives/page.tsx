@@ -1,6 +1,6 @@
 import { AdminCityPicker } from "@/components/admin-location-picker";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { deleteRepresentative, saveRepresentative } from "./actions";
 
 type Props={searchParams:Promise<{error?:string;saved?:string;deleted?:string}>};

@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { Locale } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/server";
-import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { createClient } from "@/lib/db/server";
+import { hasDatabaseEnv } from "@/lib/db/env";
 import { brandName, type BrandCode } from "@/lib/brands";
 
 export type CatalogProduct = {
@@ -32,7 +32,7 @@ export type CatalogCategory = {
 
 export type CatalogResult = {
   categories: CatalogCategory[];
-  source: "supabase" | "fallback";
+  source: "postgres" | "fallback";
 };
 
 const fallbackCopy = {
@@ -156,11 +156,11 @@ function fallbackCatalog(locale: Locale): CatalogResult {
 }
 
 export async function getCatalog(locale: Locale): Promise<CatalogResult> {
-  if (!hasSupabaseEnv()) return fallbackCatalog(locale);
+  if (!hasDatabaseEnv()) return fallbackCatalog(locale);
 
   try {
-    const supabase = await createClient();
-    const { data: categories, error: categoriesError } = await supabase
+    const database = await createClient();
+    const { data: categories, error: categoriesError } = await database
       .from("product_categories")
       .select("id, code, icon_key, accent_color, position")
       .eq("is_published", true)
@@ -171,19 +171,19 @@ export async function getCatalog(locale: Locale): Promise<CatalogResult> {
     const categoryIds = categories.map(({ id }) => id);
     const [{ data: categoryTranslations, error: categoryTranslationError }, { data: products, error: productsError }, {data:dbBrands}] =
       await Promise.all([
-        supabase
+        database
           .from("product_category_translations")
           .select("category_id, name, description, slug")
           .eq("locale", locale)
           .in("category_id", categoryIds),
-        supabase
+        database
           .from("products")
           .select("id, brand_id, category_id, image_url, is_featured, position")
           .eq("is_published", true)
           .lte("published_at", new Date().toISOString())
           .in("category_id", categoryIds)
           .order("position"),
-        supabase.from("brands").select("id,code").eq("is_published",true),
+        database.from("brands").select("id,code").eq("is_published",true),
       ]);
 
     if (categoryTranslationError || productsError || !categoryTranslations) {
@@ -192,7 +192,7 @@ export async function getCatalog(locale: Locale): Promise<CatalogResult> {
 
     const productIds = (products ?? []).map(({ id }) => id);
     const { data: productTranslations, error: productTranslationError } = productIds.length
-      ? await supabase
+      ? await database
           .from("product_translations")
           .select("product_id, name, short_description, key_specification, slug")
           .eq("locale", locale)
@@ -246,7 +246,7 @@ export async function getCatalog(locale: Locale): Promise<CatalogResult> {
     });
 
     if (!mapped.length) return fallbackCatalog(locale);
-    return { categories: mapped, source: "supabase" };
+    return { categories: mapped, source: "postgres" };
   } catch {
     return fallbackCatalog(locale);
   }

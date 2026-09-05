@@ -1,3 +1,10 @@
 "use server";
-import {redirect} from "next/navigation";import {revalidatePath} from "next/cache";import {requireStaff} from "@/lib/admin/auth";import {createAdminClient} from "@/lib/supabase/admin";
-export async function createStaff(data:FormData){const{profile}=await requireStaff();if(profile.role!=="manager")redirect("/admin");const email=String(data.get("email")??"").trim().toLowerCase(),password=String(data.get("password")??""),displayName=String(data.get("display_name")??"").trim().slice(0,120),role=String(data.get("role")??"");if(!/^\S+@\S+\.\S+$/.test(email)||password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password)||!/[\W_]/.test(password)||!(["manager","admin","seo"] as string[]).includes(role))redirect("/admin/staff?error=validation");let admin;try{admin=createAdminClient()}catch{redirect("/admin/staff?error=configuration")};const{data:created,error}=await admin.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{display_name:displayName}});if(error||!created.user)redirect("/admin/staff?error=create");const{error:profileError}=await admin.from("profiles").upsert({id:created.user.id,display_name:displayName||email.split("@")[0],role:role as "manager"|"admin"|"seo",is_active:true});if(profileError){await admin.auth.admin.deleteUser(created.user.id);redirect("/admin/staff?error=profile")};revalidatePath("/admin/staff");redirect("/admin/staff?created=1")}
+import {redirect} from "next/navigation";import {revalidatePath} from "next/cache";import {requireStaff} from "@/lib/admin/auth";import {createStaffAccount} from "@/lib/auth/accounts";
+export async function createStaff(data:FormData){
+ const {profile}=await requireStaff();if(profile.role!=="manager")redirect("/admin");
+ const email=String(data.get("email")??"").trim().toLowerCase(),password=String(data.get("password")??""),displayName=String(data.get("display_name")??"").trim().slice(0,120),role=String(data.get("role")??"");
+ const phone=String(data.get("phone")??"").trim()||undefined;
+ if(!["manager","admin","seo"].includes(role)||(phone&&!/^\+989\d{9}$/.test(phone)))redirect("/admin/staff?error=validation");
+ try {await createStaffAccount({email,password,displayName,role:role as "manager"|"admin"|"seo",phone});} catch {redirect("/admin/staff?error=create");}
+ revalidatePath("/admin/staff");redirect("/admin/staff?created=1");
+}

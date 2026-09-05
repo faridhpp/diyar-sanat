@@ -4,7 +4,7 @@ import { CareerList } from "@/components/career-list";
 import { CareerResumeForm as ResumeForm } from "@/components/career-resume-form";
 import { InnerPageHero } from "@/components/inner-page-hero";
 import { isLocale } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 type Props = { params: Promise<{ lang: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

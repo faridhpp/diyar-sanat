@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -31,14 +31,14 @@ export async function saveBrand(data: FormData) {
   if (!slugPattern.test(code) || !slugPattern.test(faSlug) || !slugPattern.test(enSlug)) fail("کد و نشانی باید انگلیسی و خط‌تیره‌دار باشند");
   if (!faName || !enName) fail("نام فارسی و انگلیسی الزامی است");
 
-  const supabase = await createClient();
+  const database = await createClient();
   let brandId = id;
   let created = false;
   if (brandId) {
-    const { error } = await supabase.from("brands").update({ code, position, is_published: isPublished }).eq("id", brandId);
+    const { error } = await database.from("brands").update({ code, position, is_published: isPublished }).eq("id", brandId);
     if (error) fail("ویرایش برند انجام نشد");
   } else {
-    const { data: brand, error } = await supabase.from("brands").insert({ code, position, is_published: isPublished }).select("id").single();
+    const { data: brand, error } = await database.from("brands").insert({ code, position, is_published: isPublished }).select("id").single();
     if (error || !brand) fail("ثبت برند انجام نشد؛ کد برند باید یکتا باشد");
     brandId = brand.id;
     created = true;
@@ -48,9 +48,9 @@ export async function saveBrand(data: FormData) {
     { brand_id: brandId, locale: "fa" as const, name: faName, slug: faSlug, description: value(data, "fa_description", 800) || null },
     { brand_id: brandId, locale: "en" as const, name: enName, slug: enSlug, description: value(data, "en_description", 800) || null },
   ];
-  const { error } = await supabase.from("brand_translations").upsert(translations, { onConflict: "brand_id,locale" });
+  const { error } = await database.from("brand_translations").upsert(translations, { onConflict: "brand_id,locale" });
   if (error) {
-    if (created) await supabase.from("brands").delete().eq("id", brandId);
+    if (created) await database.from("brands").delete().eq("id", brandId);
     fail("ترجمه برند ذخیره نشد؛ نشانی هر زبان باید یکتا باشد");
   }
 

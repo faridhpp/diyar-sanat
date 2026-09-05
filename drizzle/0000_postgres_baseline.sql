@@ -1,0 +1,3112 @@
+-- PostgreSQL baseline, ported from the original application migrations.
+-- Run against an empty database using DATABASE_ADMIN_URL; never against Supabase.
+do $$ begin if not exists(select 1 from pg_roles where rolname='app_visitor') then create role app_visitor nologin; end if; end $$;
+do $$ begin if not exists(select 1 from pg_roles where rolname='app_staff') then create role app_staff nologin; end if; end $$;
+do $$ begin if not exists(select 1 from pg_roles where rolname='app_backend') then create role app_backend nologin; end if; end $$;
+do $$ begin if not exists(select 1 from pg_roles where rolname='diyar_app') then create role diyar_app login noinherit; end if; end $$;
+grant app_visitor, app_staff, app_backend to diyar_app;
+revoke create on schema public from public;
+create schema private;
+create table private.users (
+ id uuid primary key default gen_random_uuid(),
+ email text not null unique check (email = lower(email)),
+ password_hash text not null,
+ created_at timestamptz not null default now()
+);
+create function private.current_user_id() returns uuid language sql stable as $$
+ select nullif(current_setting('app.user_id', true), '')::uuid;
+$$;
+grant usage on schema public to app_visitor, app_staff, app_backend;
+grant usage on schema private to app_visitor, app_staff, app_backend;
+grant execute on function private.current_user_id() to app_visitor, app_staff;
+
+-- Original: 20260806093130_initial_catalog.sql
+create schema if not exists private;
+
+revoke all on schema private from public, app_visitor, app_staff;
+grant usage on schema private to app_staff;
+
+create table public.profiles (
+  id uuid primary key references private.users (id) on delete cascade,
+  display_name text,
+  role text not null default 'viewer'
+    check (role in ('admin', 'editor', 'viewer')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.brands (
+  id bigint generated always as identity primary key,
+  code text not null unique,
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint brands_code_format check (code ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+);
+
+create table public.brand_translations (
+  id bigint generated always as identity primary key,
+  brand_id bigint not null references public.brands (id) on delete cascade,
+  locale text not null check (locale in ('fa', 'en')),
+  name text not null,
+  description text,
+  slug text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (brand_id, locale),
+  unique (locale, slug),
+  constraint brand_translations_slug_format
+    check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+);
+
+create table public.product_categories (
+  id bigint generated always as identity primary key,
+  brand_id bigint not null references public.brands (id) on delete restrict,
+  code text not null unique,
+  icon_key text not null,
+  accent_color text not null default '#164B82',
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint product_categories_code_format
+    check (code ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  constraint product_categories_accent_color_format
+    check (accent_color ~ '^#[0-9A-Fa-f]{6}$')
+);
+
+create table public.product_category_translations (
+  id bigint generated always as identity primary key,
+  category_id bigint not null references public.product_categories (id) on delete cascade,
+  locale text not null check (locale in ('fa', 'en')),
+  name text not null,
+  description text,
+  slug text not null,
+  seo_title text,
+  seo_description text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (category_id, locale),
+  unique (locale, slug),
+  constraint product_category_translations_slug_format
+    check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+);
+
+create table public.products (
+  id bigint generated always as identity primary key,
+  brand_id bigint not null references public.brands (id) on delete restrict,
+  category_id bigint not null references public.product_categories (id) on delete restrict,
+  sku text unique,
+  image_url text,
+  datasheet_url text,
+  is_featured boolean not null default false,
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  published_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint products_published_at_required
+    check (not is_published or published_at is not null)
+);
+
+create table public.product_translations (
+  id bigint generated always as identity primary key,
+  product_id bigint not null references public.products (id) on delete cascade,
+  locale text not null check (locale in ('fa', 'en')),
+  name text not null,
+  short_description text,
+  description text,
+  key_specification text,
+  slug text not null,
+  seo_title text,
+  seo_description text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (product_id, locale),
+  unique (locale, slug),
+  constraint product_translations_slug_format
+    check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+);
+
+create table public.product_specifications (
+  id bigint generated always as identity primary key,
+  product_id bigint not null references public.products (id) on delete cascade,
+  locale text not null check (locale in ('fa', 'en')),
+  label text not null,
+  value text not null,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index brand_translations_brand_id_idx
+  on public.brand_translations (brand_id);
+create index product_categories_brand_position_idx
+  on public.product_categories (brand_id, position)
+  where is_published;
+create index product_category_translations_category_id_idx
+  on public.product_category_translations (category_id);
+create index products_brand_id_idx on public.products (brand_id);
+create index products_category_position_idx
+  on public.products (category_id, position)
+  where is_published;
+create index products_featured_position_idx
+  on public.products (is_featured, position)
+  where is_published;
+create index product_translations_product_id_idx
+  on public.product_translations (product_id);
+create index product_specifications_product_locale_position_idx
+  on public.product_specifications (product_id, locale, position);
+
+create or replace function private.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create or replace function private.has_editor_access()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = (select private.current_user_id())
+      and role in ('admin', 'editor')
+  );
+$$;
+
+revoke execute on function private.set_updated_at() from public, app_visitor, app_staff;
+revoke execute on function private.has_editor_access() from public, app_visitor;
+grant execute on function private.has_editor_access() to app_staff;
+
+create trigger profiles_set_updated_at
+before update on public.profiles
+for each row execute function private.set_updated_at();
+create trigger brands_set_updated_at
+before update on public.brands
+for each row execute function private.set_updated_at();
+create trigger brand_translations_set_updated_at
+before update on public.brand_translations
+for each row execute function private.set_updated_at();
+create trigger product_categories_set_updated_at
+before update on public.product_categories
+for each row execute function private.set_updated_at();
+create trigger product_category_translations_set_updated_at
+before update on public.product_category_translations
+for each row execute function private.set_updated_at();
+create trigger products_set_updated_at
+before update on public.products
+for each row execute function private.set_updated_at();
+create trigger product_translations_set_updated_at
+before update on public.product_translations
+for each row execute function private.set_updated_at();
+create trigger product_specifications_set_updated_at
+before update on public.product_specifications
+for each row execute function private.set_updated_at();
+
+alter table public.profiles enable row level security;
+alter table public.brands enable row level security;
+alter table public.brand_translations enable row level security;
+alter table public.product_categories enable row level security;
+alter table public.product_category_translations enable row level security;
+alter table public.products enable row level security;
+alter table public.product_translations enable row level security;
+alter table public.product_specifications enable row level security;
+
+create policy profiles_read_own
+on public.profiles for select to app_staff
+using (id = (select private.current_user_id()) or (select private.has_editor_access()));
+
+create policy profiles_admin_manage
+on public.profiles for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy brands_public_read
+on public.brands for select to app_visitor, app_staff
+using (is_published);
+create policy brands_editor_manage
+on public.brands for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy brand_translations_public_read
+on public.brand_translations for select to app_visitor, app_staff
+using (exists (
+  select 1 from public.brands
+  where brands.id = brand_translations.brand_id and brands.is_published
+));
+create policy brand_translations_editor_manage
+on public.brand_translations for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy product_categories_public_read
+on public.product_categories for select to app_visitor, app_staff
+using (
+  is_published
+  and exists (
+    select 1 from public.brands
+    where brands.id = product_categories.brand_id
+      and brands.is_published
+  )
+);
+create policy product_categories_editor_manage
+on public.product_categories for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy product_category_translations_public_read
+on public.product_category_translations for select to app_visitor, app_staff
+using (exists (
+  select 1 from public.product_categories
+  where product_categories.id = product_category_translations.category_id
+    and product_categories.is_published
+));
+create policy product_category_translations_editor_manage
+on public.product_category_translations for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy products_public_read
+on public.products for select to app_visitor, app_staff
+using (
+  is_published
+  and published_at <= now()
+  and exists (
+    select 1 from public.brands
+    where brands.id = products.brand_id
+      and brands.is_published
+  )
+  and exists (
+    select 1 from public.product_categories
+    where product_categories.id = products.category_id
+      and product_categories.is_published
+  )
+);
+create policy products_editor_manage
+on public.products for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy product_translations_public_read
+on public.product_translations for select to app_visitor, app_staff
+using (exists (
+  select 1 from public.products
+  where products.id = product_translations.product_id
+    and products.is_published
+    and products.published_at <= now()
+));
+create policy product_translations_editor_manage
+on public.product_translations for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+create policy product_specifications_public_read
+on public.product_specifications for select to app_visitor, app_staff
+using (exists (
+  select 1 from public.products
+  where products.id = product_specifications.product_id
+    and products.is_published
+    and products.published_at <= now()
+));
+create policy product_specifications_editor_manage
+on public.product_specifications for all to app_staff
+using ((select private.has_editor_access()))
+with check ((select private.has_editor_access()));
+
+grant usage on schema public to app_visitor, app_staff;
+grant select on public.brands,
+  public.brand_translations,
+  public.product_categories,
+  public.product_category_translations,
+  public.products,
+  public.product_translations,
+  public.product_specifications
+to app_visitor, app_staff;
+
+grant select, insert, update, delete on public.profiles to app_staff;
+grant insert, update, delete on public.brands,
+  public.brand_translations,
+  public.product_categories,
+  public.product_category_translations,
+  public.products,
+  public.product_translations,
+  public.product_specifications
+to app_staff;
+
+grant usage, select on all sequences in schema public to app_staff;
+
+
+-- Original: 20260807093656_admin_foundation.sql
+-- Secure staff administration foundation. No user is created by this migration.
+
+alter table public.profiles
+  add column if not exists phone text,
+  add column if not exists avatar_url text,
+  add column if not exists is_active boolean not null default false,
+  add column if not exists last_seen_at timestamptz;
+
+alter table public.profiles drop constraint if exists profiles_role_check;
+update public.profiles
+set role = case role
+  when 'admin' then 'manager'
+  when 'editor' then 'admin'
+  else 'seo'
+end,
+is_active = case when role in ('admin', 'editor') then true else false end;
+alter table public.profiles
+  alter column role set default 'seo',
+  add constraint profiles_role_check check (role in ('manager', 'admin', 'seo')),
+  add constraint profiles_phone_format check (phone is null or phone ~ '^\+?[0-9]{10,15}$');
+
+create index if not exists profiles_active_role_idx
+  on public.profiles (is_active, role);
+
+drop function if exists private.has_editor_access() cascade;
+
+create or replace function private.current_staff_role()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select role
+  from public.profiles
+  where id = (select private.current_user_id())
+    and is_active
+  limit 1;
+$$;
+
+create or replace function private.has_staff_role(allowed_roles text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((select private.current_staff_role()) = any(allowed_roles), false);
+$$;
+
+revoke all on function private.current_staff_role() from public, app_visitor;
+revoke all on function private.has_staff_role(text[]) from public, app_visitor;
+grant execute on function private.current_staff_role() to app_staff;
+grant execute on function private.has_staff_role(text[]) to app_staff;
+
+drop policy if exists profiles_read_own on public.profiles;
+drop policy if exists profiles_admin_manage on public.profiles;
+create policy profiles_read_own
+on public.profiles for select to app_staff
+using (id = (select private.current_user_id()) or (select private.has_staff_role(array['manager'])));
+create policy profiles_manager_insert
+on public.profiles for insert to app_staff
+with check ((select private.has_staff_role(array['manager'])));
+create policy profiles_manager_update
+on public.profiles for update to app_staff
+using ((select private.has_staff_role(array['manager'])))
+with check ((select private.has_staff_role(array['manager'])));
+create policy profiles_manager_delete
+on public.profiles for delete to app_staff
+using ((select private.has_staff_role(array['manager'])) and id <> (select private.current_user_id()));
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array[
+    'brands', 'brand_translations', 'product_categories',
+    'product_category_translations', 'products', 'product_translations',
+    'product_specifications'
+  ]
+  loop
+    execute format(
+      'create policy %I on public.%I for all to app_staff using ((select private.has_staff_role(array[''manager'',''admin'',''seo'']))) with check ((select private.has_staff_role(array[''manager'',''admin'',''seo''])))',
+      table_name || '_staff_manage', table_name
+    );
+  end loop;
+end $$;
+
+create table public.admin_settings (
+  id boolean primary key default true check (id),
+  login_method text not null default 'password'
+    check (login_method in ('password', 'sms', 'both')),
+  sms_provider text
+    check (sms_provider is null or sms_provider in ('kavenegar', 'sms_ir', 'ippanel')),
+  sms_sender text,
+  sms_template_key text,
+  otp_ttl_seconds integer not null default 120 check (otp_ttl_seconds between 60 and 600),
+  otp_resend_seconds integer not null default 60 check (otp_resend_seconds between 30 and 300),
+  require_captcha boolean not null default true,
+  updated_by uuid references private.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint admin_settings_sms_configuration check (
+    login_method = 'password' or (sms_provider is not null and sms_template_key is not null)
+  )
+);
+
+insert into public.admin_settings (id) values (true) on conflict (id) do nothing;
+
+create table public.staff_login_events (
+  id bigint generated always as identity primary key,
+  user_id uuid references private.users (id) on delete set null,
+  identifier_hint text,
+  event_type text not null check (event_type in ('password_success','password_failure','otp_requested','otp_success','otp_failure','signed_out','blocked')),
+  provider text check (provider is null or provider in ('password','kavenegar','sms_ir','ippanel')),
+  ip_hash text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
+create index staff_login_events_user_created_idx on public.staff_login_events (user_id, created_at desc);
+create index staff_login_events_created_idx on public.staff_login_events (created_at desc);
+
+create trigger admin_settings_set_updated_at before update on public.admin_settings
+for each row execute function private.set_updated_at();
+
+alter table public.admin_settings enable row level security;
+alter table public.staff_login_events enable row level security;
+
+create policy admin_settings_public_read on public.admin_settings for select to app_visitor, app_staff
+using (true);
+create policy admin_settings_manager_update on public.admin_settings for update to app_staff
+using ((select private.has_staff_role(array['manager'])))
+with check ((select private.has_staff_role(array['manager'])));
+create policy login_events_manager_read on public.staff_login_events for select to app_staff
+using ((select private.has_staff_role(array['manager'])));
+
+revoke all on public.admin_settings, public.staff_login_events from app_visitor, app_staff;
+grant select on public.admin_settings to app_visitor, app_staff;
+grant update on public.admin_settings to app_staff;
+grant select on public.staff_login_events to app_staff;
+grant usage, select on sequence public.staff_login_events_id_seq to app_staff;
+
+comment on table public.admin_settings is 'Non-secret staff authentication settings. Provider API secrets live only in server environment variables.';
+comment on table public.staff_login_events is 'Security audit trail. Insertions must happen through trusted server code, never direct browser access.';
+
+
+-- Original: 20260807101140_representatives_geography.sql
+create table public.countries (
+  id bigint generated always as identity primary key,
+  code text not null unique check (code ~ '^[A-Z]{2}$'),
+  slug text not null unique check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  name_fa text not null,
+  name_en text not null,
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table public.provinces (
+  id bigint generated always as identity primary key,
+  country_id bigint not null references public.countries(id) on delete restrict,
+  code text not null,
+  slug text not null,
+  name_fa text not null,
+  name_en text not null,
+  map_anchor_x numeric(6,3) check (map_anchor_x between 0 and 100),
+  map_anchor_y numeric(6,3) check (map_anchor_y between 0 and 100),
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique(country_id,code), unique(country_id,slug)
+);
+create table public.cities (
+  id bigint generated always as identity primary key,
+  province_id bigint not null references public.provinces(id) on delete restrict,
+  slug text not null,
+  name_fa text not null,
+  name_en text not null,
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique(province_id,slug)
+);
+create table public.representatives (
+  id bigint generated always as identity primary key,
+  city_id bigint not null references public.cities(id) on delete restrict,
+  slug text not null unique check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  business_name_fa text not null, business_name_en text,
+  manager_name_fa text not null, manager_name_en text,
+  address_fa text not null, address_en text,
+  phone text not null check (phone ~ '^\+?[0-9]{10,15}$'),
+  whatsapp text check (whatsapp is null or whatsapp ~ '^\+?[0-9]{10,15}$'),
+  latitude numeric(9,6) check (latitude between -90 and 90),
+  longitude numeric(9,6) check (longitude between -180 and 180),
+  directions_url text check (directions_url is null or directions_url ~ '^https://'),
+  is_published boolean not null default false,
+  position integer not null default 0 check (position >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create index provinces_country_position_idx on public.provinces(country_id,position);
+create index cities_province_position_idx on public.cities(province_id,position);
+create index representatives_city_position_idx on public.representatives(city_id,position);
+create index representatives_public_idx on public.representatives(city_id) where is_published;
+create trigger countries_set_updated_at before update on public.countries for each row execute function private.set_updated_at();
+create trigger provinces_set_updated_at before update on public.provinces for each row execute function private.set_updated_at();
+create trigger cities_set_updated_at before update on public.cities for each row execute function private.set_updated_at();
+create trigger representatives_set_updated_at before update on public.representatives for each row execute function private.set_updated_at();
+alter table public.countries enable row level security; alter table public.provinces enable row level security; alter table public.cities enable row level security; alter table public.representatives enable row level security;
+create policy countries_public_read on public.countries for select to app_visitor,app_staff using (is_published);
+create policy provinces_public_read on public.provinces for select to app_visitor,app_staff using (is_published and exists(select 1 from public.countries c where c.id=country_id and c.is_published));
+create policy cities_public_read on public.cities for select to app_visitor,app_staff using (is_published and exists(select 1 from public.provinces p join public.countries c on c.id=p.country_id where p.id=province_id and p.is_published and c.is_published));
+create policy representatives_public_read on public.representatives for select to app_visitor,app_staff using (is_published and exists(select 1 from public.cities ci join public.provinces p on p.id=ci.province_id join public.countries c on c.id=p.country_id where ci.id=city_id and ci.is_published and p.is_published and c.is_published));
+create policy countries_staff_manage on public.countries for all to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+create policy provinces_staff_manage on public.provinces for all to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+create policy cities_staff_manage on public.cities for all to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+create policy representatives_staff_manage on public.representatives for all to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+grant select on public.countries,public.provinces,public.cities,public.representatives to app_visitor,app_staff;
+grant insert,update,delete on public.countries,public.provinces,public.cities,public.representatives to app_staff;
+grant usage,select on all sequences in schema public to app_staff;
+insert into public.countries(code,slug,name_fa,name_en,is_published,position) values ('IR','iran','ایران','Iran',true,0),('IQ','iraq','عراق','Iraq',true,1);
+
+
+-- Original: 20260807102848_representative_applications.sql
+create table public.representative_applications (
+  id bigint generated always as identity primary key,
+  tracking_code text not null unique default upper(substr(replace(gen_random_uuid()::text,'-',''),1,12)),
+  locale text not null check (locale in ('fa','en')),
+  full_name text not null,
+  identity_code text not null,
+  mobile text not null check (mobile ~ '^\+?[0-9]{10,15}$'),
+  email text,
+  business_name text not null,
+  business_type text not null,
+  country_code text not null check (country_code in ('IR','IQ')),
+  region text not null,
+  city text not null,
+  address text not null,
+  experience text not null,
+  distribution_area text not null,
+  facilities text[] not null default '{}',
+  document_path text,
+  notes text,
+  consent_at timestamptz not null,
+  status text not null default 'new' check (status in ('new','reviewing','needs_information','approved','rejected','archived')),
+  internal_note text,
+  reviewed_by uuid references private.users(id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index representative_applications_status_created_idx on public.representative_applications(status,created_at desc);
+create index representative_applications_mobile_idx on public.representative_applications(mobile);
+create trigger representative_applications_set_updated_at before update on public.representative_applications for each row execute function private.set_updated_at();
+alter table public.representative_applications enable row level security;
+create policy representative_applications_public_insert on public.representative_applications for insert to app_visitor,app_staff with check (status='new' and reviewed_by is null and reviewed_at is null and internal_note is null);
+create policy representative_applications_staff_read on public.representative_applications for select to app_staff using ((select private.has_staff_role(array['manager','admin'])));
+create policy representative_applications_staff_update on public.representative_applications for update to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+create policy representative_applications_staff_delete on public.representative_applications for delete to app_staff using ((select private.has_staff_role(array['manager'])));
+grant insert on public.representative_applications to app_visitor,app_staff;
+grant select,update,delete on public.representative_applications to app_staff;
+grant usage,select on sequence public.representative_applications_id_seq to app_visitor,app_staff;
+
+
+-- Original: 20260807103428_editorial_content.sql
+create table public.media_categories(id bigint generated always as identity primary key,code text not null unique check(code ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),name_fa text not null,name_en text not null,slug_fa text not null unique,slug_en text not null unique,is_published boolean not null default false,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.editorial_entries(id bigint generated always as identity primary key,category_id bigint references public.media_categories(id) on delete set null,kind text not null check(kind in ('news','article','guide')),cover_image_url text,video_url text,cta_url text,is_featured boolean not null default false,is_published boolean not null default false,published_at timestamptz,position integer not null default 0 check(position>=0),created_by uuid references private.users(id) on delete set null,updated_by uuid references private.users(id) on delete set null,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),constraint editorial_publish_date check(not is_published or published_at is not null));
+create table public.editorial_translations(id bigint generated always as identity primary key,entry_id bigint not null references public.editorial_entries(id) on delete cascade,locale text not null check(locale in ('fa','en')),title text not null,slug text not null,excerpt text,body_markdown text not null default '',content_blocks jsonb not null default '[]'::jsonb check(jsonb_typeof(content_blocks)='array'),cta_label text,seo_title text,seo_description text,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(entry_id,locale),unique(locale,slug));
+create index editorial_entries_kind_published_idx on public.editorial_entries(kind,published_at desc) where is_published;
+create index editorial_entries_category_idx on public.editorial_entries(category_id,published_at desc);
+create index editorial_translations_entry_idx on public.editorial_translations(entry_id);
+create trigger media_categories_set_updated_at before update on public.media_categories for each row execute function private.set_updated_at();create trigger editorial_entries_set_updated_at before update on public.editorial_entries for each row execute function private.set_updated_at();create trigger editorial_translations_set_updated_at before update on public.editorial_translations for each row execute function private.set_updated_at();
+alter table public.media_categories enable row level security;alter table public.editorial_entries enable row level security;alter table public.editorial_translations enable row level security;
+create policy media_categories_public_read on public.media_categories for select to app_visitor,app_staff using(is_published);
+create policy editorial_entries_public_read on public.editorial_entries for select to app_visitor,app_staff using(is_published and published_at<=now());
+create policy editorial_translations_public_read on public.editorial_translations for select to app_visitor,app_staff using(exists(select 1 from public.editorial_entries e where e.id=entry_id and e.is_published and e.published_at<=now()));
+create policy media_categories_staff_manage on public.media_categories for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy editorial_entries_staff_manage on public.editorial_entries for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy editorial_translations_staff_manage on public.editorial_translations for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+grant select on public.media_categories,public.editorial_entries,public.editorial_translations to app_visitor,app_staff;grant insert,update,delete on public.media_categories,public.editorial_entries,public.editorial_translations to app_staff;grant usage,select on all sequences in schema public to app_staff;
+
+
+-- Original: 20260807112755_seed_existing_public_content.sql
+do $$ declare b bigint;c bigint;p bigint;begin
+insert into public.brands(code,is_published,position) values('diyar-shimi',true,0) on conflict(code) do update set is_published=true returning id into b;
+insert into public.brand_translations(brand_id,locale,name,slug,description) values(b,'fa','دیار شیمی','diyar-shimi','محصولات تخصصی روانکار و سیالات خودرو'),(b,'en','Dyar Shimi','dyar-shimi','Specialist automotive lubricants and fluids') on conflict(brand_id,locale) do update set name=excluded.name,description=excluded.description;
+insert into public.product_categories(brand_id,code,icon_key,accent_color,is_published,position) values(b,'engine-oil','oil','#d12632',true,1) on conflict(code) do update set is_published=true returning id into c;
+insert into public.product_category_translations(category_id,locale,name,description,slug) values(c,'fa','روغن موتور','روانکاری و محافظت از موتور در شرایط کاری متفاوت','engine-oil'),(c,'en','Engine oil','Lubrication and engine protection across operating conditions','engine-oil') on conflict(category_id,locale) do update set name=excluded.name,description=excluded.description;
+insert into public.products(brand_id,category_id,sku,image_url,is_featured,is_published,position,published_at) values(b,c,'DST-10W40','/images/product-engine-oil-dst.png',true,true,1,now()) on conflict(sku) do update set is_published=true returning id into p;
+insert into public.product_translations(product_id,locale,name,short_description,key_specification,slug) values(p,'fa','روغن موتور پیشرفته','محافظت پایدار برای کارکرد روزمره موتور','10W-40','advanced-engine-oil-10w40'),(p,'en','Advanced engine oil','Stable protection for everyday engine operation','10W-40','advanced-engine-oil-10w40') on conflict(locale,slug) do update set product_id=excluded.product_id,name=excluded.name,short_description=excluded.short_description,key_specification=excluded.key_specification;
+insert into public.product_categories(brand_id,code,icon_key,accent_color,is_published,position) values(b,'gear-oil','gear','#164b82',true,2) on conflict(code) do update set is_published=true returning id into c;
+insert into public.product_category_translations(category_id,locale,name,description,slug) values(c,'fa','واسکازین','روانکاری پایدار چرخ‌دنده‌ها و سامانه انتقال قدرت','gear-oil'),(c,'en','Gear oil','Stable lubrication for gears and transmission systems','gear-oil') on conflict(category_id,locale) do update set name=excluded.name;
+insert into public.product_categories(brand_id,code,icon_key,accent_color,is_published,position) values(b,'brake-fluid','brake','#c77a10',true,3) on conflict(code) do update set is_published=true returning id into c;
+insert into public.product_category_translations(category_id,locale,name,description,slug) values(c,'fa','مایع روغن ترمز','انتقال مطمئن فشار و پایداری عملکرد سامانه ترمز','brake-fluid'),(c,'en','Brake fluid','Reliable pressure transfer and stable braking performance','brake-fluid') on conflict(category_id,locale) do update set name=excluded.name;
+insert into public.products(brand_id,category_id,sku,image_url,is_featured,is_published,position,published_at) values(b,c,'DST-DOT4','/images/product-brake-fluid-dst.png',true,true,1,now()) on conflict(sku) do update set is_published=true returning id into p;
+insert into public.product_translations(product_id,locale,name,short_description,key_specification,slug) values(p,'fa','مایع روغن ترمز','برای انتقال فشار در سامانه‌های ترمز سازگار','DOT 4','brake-fluid-dot4'),(p,'en','Brake fluid','For pressure transfer in compatible braking systems','DOT 4','brake-fluid-dot4') on conflict(locale,slug) do update set product_id=excluded.product_id,name=excluded.name,short_description=excluded.short_description,key_specification=excluded.key_specification;
+insert into public.product_categories(brand_id,code,icon_key,accent_color,is_published,position) values(b,'antifreeze','coolant','#2877bd',true,4) on conflict(code) do update set is_published=true returning id into c;
+insert into public.product_category_translations(category_id,locale,name,description,slug) values(c,'fa','ضدیخ و ضدجوش','محافظت از سامانه خنک‌کاری در برابر یخ‌زدگی، جوش و خوردگی','antifreeze'),(c,'en','Antifreeze and coolant','Cooling-system protection from freezing, boiling, and corrosion','antifreeze') on conflict(category_id,locale) do update set name=excluded.name;
+insert into public.products(brand_id,category_id,sku,image_url,is_featured,is_published,position,published_at) values(b,c,'DST-AF40','/images/product-antifreeze-dst.png',true,true,1,now()) on conflict(sku) do update set is_published=true returning id into p;
+insert into public.product_translations(product_id,locale,name,short_description,key_specification,slug) values(p,'fa','ضدیخ و ضدجوش','محافظت از مدار خنک‌کاری در شرایط دمایی مختلف','-40°C','antifreeze-coolant-40'),(p,'en','Antifreeze and coolant','Cooling-circuit protection across temperature conditions','-40°C','antifreeze-coolant-40') on conflict(locale,slug) do update set product_id=excluded.product_id,name=excluded.name,short_description=excluded.short_description,key_specification=excluded.key_specification;
+end $$;
+
+
+-- Original: 20260807113356_certificates_gallery_files.sql
+create table public.certificates(id bigint generated always as identity primary key,code text not null unique,title_fa text not null,title_en text not null,issuer_fa text,issuer_en text,certificate_number text not null,document_url text,image_url text,is_published boolean not null default false,position integer not null default 0 check(position>=0),issued_at date,expires_at date,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.gallery_albums(id bigint generated always as identity primary key,slug text not null unique,title_fa text not null,title_en text not null,description_fa text,description_en text,cover_url text,is_published boolean not null default false,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.gallery_items(id bigint generated always as identity primary key,album_id bigint not null references public.gallery_albums(id) on delete cascade,media_type text not null check(media_type in ('image','video')),file_url text not null,alt_fa text not null,alt_en text not null,caption_fa text,caption_en text,is_published boolean not null default false,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.media_assets(id bigint generated always as identity primary key,asset_type text not null check(asset_type in ('image','video','document','catalog')),title_fa text not null,title_en text not null,description_fa text,description_en text,file_url text not null,thumbnail_url text,mime_type text,is_public boolean not null default false,downloadable boolean not null default false,created_by uuid references private.users(id) on delete set null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index certificates_public_position_idx on public.certificates(position) where is_published;create index gallery_albums_public_position_idx on public.gallery_albums(position) where is_published;create index gallery_items_album_position_idx on public.gallery_items(album_id,position);create index media_assets_type_created_idx on public.media_assets(asset_type,created_at desc);
+create trigger certificates_set_updated_at before update on public.certificates for each row execute function private.set_updated_at();create trigger gallery_albums_set_updated_at before update on public.gallery_albums for each row execute function private.set_updated_at();create trigger gallery_items_set_updated_at before update on public.gallery_items for each row execute function private.set_updated_at();create trigger media_assets_set_updated_at before update on public.media_assets for each row execute function private.set_updated_at();
+alter table public.certificates enable row level security;alter table public.gallery_albums enable row level security;alter table public.gallery_items enable row level security;alter table public.media_assets enable row level security;
+create policy certificates_public_read on public.certificates for select to app_visitor,app_staff using(is_published);create policy gallery_albums_public_read on public.gallery_albums for select to app_visitor,app_staff using(is_published);create policy gallery_items_public_read on public.gallery_items for select to app_visitor,app_staff using(is_published and exists(select 1 from public.gallery_albums a where a.id=album_id and a.is_published));create policy media_assets_public_read on public.media_assets for select to app_visitor,app_staff using(is_public);
+create policy certificates_staff_manage on public.certificates for all to app_staff using((select private.has_staff_role(array['manager','admin']))) with check((select private.has_staff_role(array['manager','admin'])));create policy gallery_albums_staff_manage on public.gallery_albums for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));create policy gallery_items_staff_manage on public.gallery_items for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));create policy media_assets_staff_manage on public.media_assets for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+grant select on public.certificates,public.gallery_albums,public.gallery_items,public.media_assets to app_visitor,app_staff;grant insert,update,delete on public.certificates,public.gallery_albums,public.gallery_items,public.media_assets to app_staff;grant usage,select on all sequences in schema public to app_staff;
+insert into public.certificates(code,title_fa,title_en,certificate_number,is_published,position) values('national-standard-338','استاندارد ملی ایران','Iran National Standard','338',true,1),('astm-d3306','استاندارد بین‌المللی ASTM D3306','ASTM D3306 International Standard','ASTM D3306',true,2),('standard-10001517','گواهی استاندارد','Standard certificate','10001517',true,3),('operation-license-7206290','پروانه بهره‌برداری','Operation license','7206290',true,4),('business-license-12452916074','شناسه کسب‌وکار','Business identifier','12452916074',true,5) on conflict(code) do nothing;
+
+
+-- Original: 20260807114230_careers_and_applications.sql
+create table public.job_positions(id bigint generated always as identity primary key,slug text not null unique,department text not null,employment_type text not null check(employment_type in ('full-time','part-time','contract','internship')),location_fa text not null,location_en text not null,title_fa text not null,title_en text not null,summary_fa text,summary_en text,description_fa text not null,description_en text not null,requirements_fa text,requirements_en text,is_published boolean not null default false,published_at timestamptz,closes_at timestamptz,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now(),constraint job_publish_date check(not is_published or published_at is not null));
+create table public.job_applications(id bigint generated always as identity primary key,tracking_code text not null unique,job_id bigint references public.job_positions(id) on delete set null,locale text not null check(locale in ('fa','en')),full_name text not null,mobile text not null,email text not null,expertise text not null,resume_url text not null,note text,consent_at timestamptz not null,status text not null default 'new' check(status in ('new','reviewing','shortlisted','interview','rejected','hired','archived')),internal_note text,reviewed_by uuid references private.users(id) on delete set null,reviewed_at timestamptz,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index job_positions_public_idx on public.job_positions(department,employment_type,published_at desc) where is_published;create index job_applications_status_created_idx on public.job_applications(status,created_at desc);create index job_applications_job_idx on public.job_applications(job_id,created_at desc);
+create trigger job_positions_set_updated_at before update on public.job_positions for each row execute function private.set_updated_at();create trigger job_applications_set_updated_at before update on public.job_applications for each row execute function private.set_updated_at();alter table public.job_positions enable row level security;alter table public.job_applications enable row level security;
+create policy job_positions_public_read on public.job_positions for select to app_visitor,app_staff using(is_published and published_at<=now() and (closes_at is null or closes_at>now()));create policy job_positions_staff_manage on public.job_positions for all to app_staff using((select private.has_staff_role(array['manager','admin']))) with check((select private.has_staff_role(array['manager','admin'])));
+create policy job_applications_public_insert on public.job_applications for insert to app_visitor,app_staff with check(status='new' and internal_note is null and reviewed_by is null);create policy job_applications_staff_read on public.job_applications for select to app_staff using((select private.has_staff_role(array['manager','admin'])));create policy job_applications_staff_update on public.job_applications for update to app_staff using((select private.has_staff_role(array['manager','admin']))) with check((select private.has_staff_role(array['manager','admin'])));create policy job_applications_manager_delete on public.job_applications for delete to app_staff using((select private.has_staff_role(array['manager'])));
+grant select on public.job_positions to app_visitor,app_staff;grant insert,update,delete on public.job_positions to app_staff;grant insert on public.job_applications to app_visitor,app_staff;grant select,update,delete on public.job_applications to app_staff;grant usage,select on all sequences in schema public to app_visitor,app_staff;
+
+
+
+-- Original: 20260807115250_contact_translations_seo.sql
+create table public.contact_submissions (
+  id bigint generated always as identity primary key,
+  tracking_code text not null unique,
+  locale text not null check (locale in ('fa', 'en')),
+  full_name text not null,
+  mobile text not null check (mobile ~ '^\+?[0-9]{10,15}$'),
+  email text not null,
+  subject text not null,
+  destination text not null check (destination in ('sales','technical','hr','pr')),
+  message text not null,
+  attachment_path text,
+  consent_at timestamptz not null,
+  status text not null default 'new' check (status in ('new','reviewing','answered','archived')),
+  internal_note text,
+  reviewed_by uuid references private.users(id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index contact_submissions_status_created_idx on public.contact_submissions(status, created_at desc);
+
+create table public.site_translations (
+  id bigint generated always as identity primary key,
+  namespace text not null check (namespace ~ '^[a-z0-9_-]+$'),
+  translation_key text not null check (translation_key ~ '^[a-z0-9_.-]+$'),
+  locale text not null check (locale in ('fa','en')),
+  value text not null,
+  description text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(namespace, translation_key, locale)
+);
+create index site_translations_lookup_idx on public.site_translations(locale, namespace);
+
+create table public.seo_settings (
+  id bigint generated always as identity primary key,
+  route text not null check (route ~ '^/[a-z0-9/_-]*$'),
+  locale text not null check (locale in ('fa','en')),
+  title text not null,
+  description text not null,
+  canonical_url text,
+  robots_index boolean not null default true,
+  robots_follow boolean not null default true,
+  og_image_url text,
+  structured_data jsonb not null default '{}'::jsonb check (jsonb_typeof(structured_data) = 'object'),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(route, locale)
+);
+create index seo_settings_locale_route_idx on public.seo_settings(locale, route);
+
+create trigger contact_submissions_set_updated_at before update on public.contact_submissions for each row execute function private.set_updated_at();
+create trigger site_translations_set_updated_at before update on public.site_translations for each row execute function private.set_updated_at();
+create trigger seo_settings_set_updated_at before update on public.seo_settings for each row execute function private.set_updated_at();
+
+alter table public.contact_submissions enable row level security;
+alter table public.site_translations enable row level security;
+alter table public.seo_settings enable row level security;
+
+create policy contact_submissions_staff_read on public.contact_submissions for select to app_staff using ((select private.has_staff_role(array['manager','admin'])));
+create policy contact_submissions_staff_update on public.contact_submissions for update to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+create policy translations_public_read on public.site_translations for select to app_visitor, app_staff using (true);
+create policy translations_staff_manage on public.site_translations for all to app_staff using ((select private.has_staff_role(array['manager','admin','seo']))) with check ((select private.has_staff_role(array['manager','admin','seo'])));
+create policy seo_public_read on public.seo_settings for select to app_visitor, app_staff using (true);
+create policy seo_staff_manage on public.seo_settings for all to app_staff using ((select private.has_staff_role(array['manager','admin','seo']))) with check ((select private.has_staff_role(array['manager','admin','seo'])));
+
+revoke all on public.contact_submissions, public.site_translations, public.seo_settings from app_visitor, app_staff;
+grant select, update on public.contact_submissions to app_staff;
+grant select on public.site_translations, public.seo_settings to app_visitor, app_staff;
+grant insert, update, delete on public.site_translations, public.seo_settings to app_staff;
+grant usage, select on sequence public.contact_submissions_id_seq, public.site_translations_id_seq, public.seo_settings_id_seq to app_staff;
+
+
+
+
+-- Original: 20260807120725_international_inquiries_and_private_documents.sql
+create table public.international_inquiries (
+  id bigint generated always as identity primary key,
+  tracking_code text not null unique,
+  locale text not null check (locale in ('fa','en')),
+  company_name text not null,
+  country text not null,
+  website text,
+  business_field text not null,
+  import_distribution_experience text not null,
+  interested_products text not null,
+  estimated_volume text,
+  cooperation_type text not null check (cooperation_type in ('distribution','representation','contract_manufacturing','other')),
+  company_profile_path text not null,
+  consent_at timestamptz not null,
+  status text not null default 'new' check (status in ('new','reviewing','needs_information','approved','rejected','archived')),
+  internal_note text,
+  reviewed_by uuid references private.users(id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index international_inquiries_status_created_idx on public.international_inquiries(status,created_at desc);
+create trigger international_inquiries_set_updated_at before update on public.international_inquiries for each row execute function private.set_updated_at();
+alter table public.international_inquiries enable row level security;
+create policy international_inquiries_staff_read on public.international_inquiries for select to app_staff using ((select private.has_staff_role(array['manager','admin'])));
+create policy international_inquiries_staff_update on public.international_inquiries for update to app_staff using ((select private.has_staff_role(array['manager','admin']))) with check ((select private.has_staff_role(array['manager','admin'])));
+revoke all on public.international_inquiries from app_visitor,app_staff;
+grant select,update on public.international_inquiries to app_staff;
+grant usage,select on sequence public.international_inquiries_id_seq to app_staff;
+
+drop policy if exists representative_applications_public_insert on public.representative_applications;
+revoke insert on public.representative_applications from app_visitor,app_staff;
+
+
+
+
+-- Original: 20260807122819_locations_brands_navigation.sql
+-- Complete administrative regions and their official centers for Iran and Iraq.
+insert into public.countries(code,slug,name_fa,name_en,is_published,position) values
+('IR','iran','ایران','Iran',true,0),('IQ','iraq','عراق','Iraq',true,1)
+on conflict(code) do update set slug=excluded.slug,name_fa=excluded.name_fa,name_en=excluded.name_en,is_published=true,position=excluded.position;
+
+with region(country_code,code,slug,name_fa,name_en,city_slug,city_fa,city_en,position) as (values
+('IR','EAZ','east-azerbaijan','آذربایجان شرقی','East Azerbaijan','tabriz','تبریز','Tabriz',1),('IR','WAZ','west-azerbaijan','آذربایجان غربی','West Azerbaijan','urmia','ارومیه','Urmia',2),('IR','ARD','ardabil','اردبیل','Ardabil','ardabil','اردبیل','Ardabil',3),('IR','ISF','isfahan','اصفهان','Isfahan','isfahan','اصفهان','Isfahan',4),('IR','ALB','alborz','البرز','Alborz','karaj','کرج','Karaj',5),('IR','ILM','ilam','ایلام','Ilam','ilam','ایلام','Ilam',6),('IR','BUS','bushehr','بوشهر','Bushehr','bushehr','بوشهر','Bushehr',7),('IR','THR','tehran','تهران','Tehran','tehran','تهران','Tehran',8),('IR','CHB','chaharmahal-bakhtiari','چهارمحال و بختیاری','Chaharmahal and Bakhtiari','shahrekord','شهرکرد','Shahrekord',9),('IR','SKH','south-khorasan','خراسان جنوبی','South Khorasan','birjand','بیرجند','Birjand',10),('IR','RKH','razavi-khorasan','خراسان رضوی','Razavi Khorasan','mashhad','مشهد','Mashhad',11),('IR','NKH','north-khorasan','خراسان شمالی','North Khorasan','bojnurd','بجنورد','Bojnurd',12),('IR','KHZ','khuzestan','خوزستان','Khuzestan','ahvaz','اهواز','Ahvaz',13),('IR','ZAN','zanjan','زنجان','Zanjan','zanjan','زنجان','Zanjan',14),('IR','SEM','semnan','سمنان','Semnan','semnan','سمنان','Semnan',15),('IR','SBL','sistan-baluchestan','سیستان و بلوچستان','Sistan and Baluchestan','zahedan','زاهدان','Zahedan',16),('IR','FRS','fars','فارس','Fars','shiraz','شیراز','Shiraz',17),('IR','QAZ','qazvin','قزوین','Qazvin','qazvin','قزوین','Qazvin',18),('IR','QOM','qom','قم','Qom','qom','قم','Qom',19),('IR','KRD','kurdistan','کردستان','Kurdistan','sanandaj','سنندج','Sanandaj',20),('IR','KER','kerman','کرمان','Kerman','kerman','کرمان','Kerman',21),('IR','KSH','kermanshah','کرمانشاه','Kermanshah','kermanshah','کرمانشاه','Kermanshah',22),('IR','KBA','kohgiluyeh-boyer-ahmad','کهگیلویه و بویراحمد','Kohgiluyeh and Boyer-Ahmad','yasuj','یاسوج','Yasuj',23),('IR','GLS','golestan','گلستان','Golestan','gorgan','گرگان','Gorgan',24),('IR','GIL','gilan','گیلان','Gilan','rasht','رشت','Rasht',25),('IR','LOR','lorestan','لرستان','Lorestan','khorramabad','خرم‌آباد','Khorramabad',26),('IR','MAZ','mazandaran','مازندران','Mazandaran','sari','ساری','Sari',27),('IR','MRK','markazi','مرکزی','Markazi','arak','اراک','Arak',28),('IR','HRZ','hormozgan','هرمزگان','Hormozgan','bandar-abbas','بندرعباس','Bandar Abbas',29),('IR','HAM','hamadan','همدان','Hamadan','hamadan','همدان','Hamadan',30),('IR','YAZ','yazd','یزد','Yazd','yazd','یزد','Yazd',31),
+('IQ','ANB','anbar','الانبار','Al Anbar','ramadi','رمادی','Ramadi',1),('IQ','ARB','erbil','اربیل','Erbil','erbil','اربیل','Erbil',2),('IQ','BAS','basra','بصره','Basra','basra','بصره','Basra',3),('IQ','BAB','babylon','بابل','Babylon','hillah','حله','Hillah',4),('IQ','BGD','baghdad','بغداد','Baghdad','baghdad','بغداد','Baghdad',5),('IQ','DHK','dohuk','دهوک','Duhok','dohuk','دهوک','Duhok',6),('IQ','QAD','qadisiyyah','قادسیه','Al-Qadisiyyah','diwaniyah','دیوانیه','Diwaniyah',7),('IQ','DIY','diyala','دیاله','Diyala','baqubah','بعقوبه','Baqubah',8),('IQ','DQR','dhi-qar','ذی‌قار','Dhi Qar','nasiriyah','ناصریه','Nasiriyah',9),('IQ','SUL','sulaymaniyah','سلیمانیه','Sulaymaniyah','sulaymaniyah','سلیمانیه','Sulaymaniyah',10),('IQ','SAL','saladin','صلاح‌الدین','Saladin','tikrit','تکریت','Tikrit',11),('IQ','KRB','karbala','کربلا','Karbala','karbala','کربلا','Karbala',12),('IQ','KRK','kirkuk','کرکوک','Kirkuk','kirkuk','کرکوک','Kirkuk',13),('IQ','MYS','maysan','میسان','Maysan','amarah','عماره','Amarah',14),('IQ','MUT','muthanna','مثنی','Al Muthanna','samawah','سماوه','Samawah',15),('IQ','NAJ','najaf','نجف','Najaf','najaf','نجف','Najaf',16),('IQ','NIN','nineveh','نینوا','Nineveh','mosul','موصل','Mosul',17),('IQ','WAS','wasit','واسط','Wasit','kut','کوت','Kut',18),('IQ','HLB','halabja','حلبچه','Halabja','halabja','حلبچه','Halabja',19)
+), upserted as (
+  insert into public.provinces(country_id,code,slug,name_fa,name_en,is_published,position)
+  select c.id,r.code,r.slug,r.name_fa,r.name_en,true,r.position from region r join public.countries c on c.code=r.country_code
+  on conflict(country_id,code) do update set slug=excluded.slug,name_fa=excluded.name_fa,name_en=excluded.name_en,is_published=true,position=excluded.position
+  returning id,country_id,code
+)
+insert into public.cities(province_id,slug,name_fa,name_en,is_published,position)
+select p.id,r.city_slug,r.city_fa,r.city_en,true,0 from region r join public.countries c on c.code=r.country_code join public.provinces p on p.country_id=c.id and p.code=r.code
+on conflict(province_id,slug) do update set name_fa=excluded.name_fa,name_en=excluded.name_en,is_published=true;
+
+do $$ declare brand_id bigint; begin
+  insert into public.brands(code,is_published,position) values('hafman',true,1) on conflict(code) do update set is_published=true,position=excluded.position returning id into brand_id;
+  insert into public.brand_translations(brand_id,locale,name,slug,description) values(brand_id,'fa','هافمن','hafman','محصولات برند هافمن'),(brand_id,'en','Hafman','hafman','Hafman brand products') on conflict(locale,slug) do update set brand_id=excluded.brand_id,name=excluded.name,description=excluded.description;
+  insert into public.brands(code,is_published,position) values('kentoil',true,2) on conflict(code) do update set is_published=true,position=excluded.position returning id into brand_id;
+  insert into public.brand_translations(brand_id,locale,name,slug,description) values(brand_id,'fa','کینت اویل','kentoil','محصولات برند کینت اویل'),(brand_id,'en','Kentoil','kentoil','Kentoil brand products') on conflict(locale,slug) do update set brand_id=excluded.brand_id,name=excluded.name,description=excluded.description;
+end $$;
+
+create table public.navigation_items(
+  id bigint generated always as identity primary key,
+  code text not null unique check(code ~ '^[a-z0-9-]+$'),
+  label_fa text not null,label_en text not null,
+  href text not null check(href ~ '^/'),
+  location text not null default 'header' check(location in ('header','footer','both')),
+  parent_id bigint references public.navigation_items(id) on delete cascade,
+  position integer not null default 0 check(position>=0),
+  is_published boolean not null default true,
+  created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+);
+create index navigation_items_location_position_idx on public.navigation_items(location,position) where is_published;
+create trigger navigation_items_set_updated_at before update on public.navigation_items for each row execute function private.set_updated_at();
+alter table public.navigation_items enable row level security;
+create policy navigation_items_public_read on public.navigation_items for select to app_visitor,app_staff using(is_published);
+create policy navigation_items_staff_manage on public.navigation_items for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+grant select on public.navigation_items to app_visitor,app_staff;grant insert,update,delete on public.navigation_items to app_staff;grant usage,select on sequence public.navigation_items_id_seq to app_staff;
+insert into public.navigation_items(code,label_fa,label_en,href,location,position) values
+('home','صفحه اصلی','Home','/','header',0),('about','درباره ما','About us','/about','both',1),('products','محصولات','Products','/products','both',2),('representatives','نمایندگی‌ها','Representatives','/representatives','both',3),('media','رسانه','Media','/media','both',4),('international','همکاری بین‌المللی','International','/international-cooperation','both',5),('careers','فرصت‌های شغلی','Careers','/careers','both',6),('contact','تماس با ما','Contact us','/contact','both',7)
+on conflict(code) do update set label_fa=excluded.label_fa,label_en=excluded.label_en,href=excluded.href,location=excluded.location,position=excluded.position,is_published=true;
+
+
+-- Original: 20260807124116_seed_iran_iraq_cities.sql
+-- Generated from the GeoNames IR/IQ country dumps (CC BY 4.0).
+-- Includes populated places with recorded population >= 1,000 and all administrative seats.
+create temporary table city_import(country_code text,province_code text,slug text,name_fa text,name_en text,population bigint,geoname_id bigint) on commit drop;
+insert into city_import(country_code,province_code,slug,name_fa,name_en,population,geoname_id) values('IR','KHZ','takht-e-qeysar-12','تخت قیصر','Takht-e Qeysar',1266,12),
+('IR','KHZ','seyyed-nur-38','سید نور','Seyyed Nur',1342,38),
+('IR','KHZ','boneh-ye-alvan-285','الوان','Boneh-ye ''Alvan',6860,285),
+('IR','THR','shahrak-e-qods-362','شهرک غرب','Shahrak-e Qods',29774,362),
+('IR','THR','sar-gol-380','سر گل','Sar Gol',1563,380),
+('IR','THR','lavasan-490','لواسان','Lavasan',18146,490),
+('IR','MAZ','abdollahabad-992','عبدالله آباد','''Abdollahabad',1365,992),
+('IR','MAZ','tashkuh-e-sofla-1006','تاشكوه سفلی','Tashkuh-e Sofla',1086,1006),
+('IR','MAZ','latingan-1077','لتینگان','Latingan',1508,1077),
+('IR','EAZ','kordlar-1225','کردلر','Kordlar',2818,1225),
+('IR','MAZ','qoroq-1594','قرق','Qoroq',10704,1594),
+('IR','GIL','lasku-kalayeh-2192','لسکو کلایه','Lasku Kalayeh',1555,2192),
+('IR','WAZ','mirabad-3315','میر آباد','Mirabad',6000,3315),
+('IR','WAZ','mirabad-3366','میرآباد','Mirabad',1052,3366),
+('IR','WAZ','gol-soleymanabad-3576','گل سليمان آباد','Gol Soleymanabad',3436,3576),
+('IR','WAZ','turchi-3594','تورتشى','Turchi',1556,3594),
+('IR','KRD','buridar-3894','بوریدر','Buridar',1182,3894),
+('IR','GLS','gamishli-yelqi-5435','وکیلی','Gamishli Yelqi',1490,5435),
+('IR','GLS','baghu-kenareh-5523','باغو كِنارِه','Baghu Kenareh',1242,5523),
+('IR','ILM','sarab-6209','سار سَراب','Sarab',1413,6209),
+('IR','ILM','haft-cheshmeh-6243','هفت چشمه','Haft Cheshmeh',3497,6243),
+('IR','MAZ','tazehabad-7792','تازه آباد','Tazehabad',1425,7792),
+('IR','MAZ','tarsiab-7795','ترسياب','Tarsiab',1773,7795),
+('IR','MAZ','neyrang-7882','نيرنگ','Neyrang',2972,7882),
+('IR','MAZ','molkar-7898','ملکار','Molkar',1223,7898),
+('IR','MAZ','koshkesara-7934','خشگ سر','Koshkesara',4157,7934),
+('IR','MAZ','kolaksar-7944','کلاکسار','Kolaksar',8843,7944),
+('IR','MAZ','kia-kola-7987','کیا کلا','Kia Kola',8040,7987),
+('IR','MAZ','hendu-kola-7995','هندو كلا','Hendu Kola',1416,7995),
+('IR','MAZ','geleyerd-8008','گليرد','Geleyerd',1174,8008),
+('IR','MAZ','galesh-pol-8016','گالش پل','Galesh Pol',1368,8016),
+('IR','MAZ','faqihabad-8024','فقیه آباد','Faqihabad',1110,8024),
+('IR','MAZ','ejbar-kola-8041','اجبارکلا','Ejbar Kola',4499,8041),
+('IR','MAZ','danyal-peyghambar-8058','دانيا','Danyal Peyghambar',1192,8058),
+('IR','MAZ','bandpey-8089','بندپی','Bandpey',1436,8089),
+('IR','MAZ','tazehabad-8571','تازه آباد','Tazehabad',5029,8571),
+('IR','MAZ','shahr-kola-8598','شهر کلا','Shahr Kola',1367,8598),
+('IR','MAZ','shir-mahalleh-8600','شير محله','Shir Mahalleh',2073,8600),
+('IR','MAZ','shir-kola-8601','شیر کلا','Shir Kola',1342,8601),
+('IR','MAZ','sang-e-tajan-8617','سنگ تجن','Sang-e Tajan',2148,8617),
+('IR','MAZ','latingan-8729','لتینگان','Latingan',1508,8729),
+('IR','MAZ','kalardasht-8781','کلاردشت','Kalardasht',13401,8781),
+('IR','MAZ','ezbaran-8816','إيزباران','Ezbaran',2719,8816),
+('IR','MAZ','eshkardasht-8819','اشکار دشت','Eshkardasht',1561,8819),
+('IR','MAZ','chamestan-8839','چماستان','Chamestan',11194,8839),
+('IR','ISF','qamsar-9279','قمصر','Qamsar',3877,9279),
+('IR','GLS','sufian-9624','سوفيّان','Sufian',1608,9624),
+('IR','QAZ','bavaras-9807','باورس','Bavaras',2147,9807),
+('IR','ALB','taleqan-9904','تالِقان','Taleqan',3211,9904),
+('IR','QAZ','nosratabad-10065','نصرت آباد','Nosratabad',13090,10065),
+('IR','MAZ','mazubon-e-sofla-10109','مازوبن سفلى','Mazubon-e Sofla',1095,10109),
+('IR','QAZ','kuraneh-10191','كورانه','Kuraneh',1709,10191),
+('IR','QAZ','alvand-10570','البرز','Alvand',90000,10570),
+('IR','MAZ','yekeh-tut-10937','يكه توت','Yekeh Tut',1578,10937),
+('IR','MAZ','saru-kola-10964','سارو كلا','Saru Kola',2402,10964),
+('IR','MAZ','seraj-kola-11288','سراج كلا','Seraj Kola',1845,11288),
+('IR','MAZ','pol-e-gardan-11351','پل گردن','Pol-e Gardan',2819,11351),
+('IR','MAZ','marmat-11453','مرمت','Marmat',1954,11453),
+('IR','MAZ','gorjiabad-11595','گرجی آباد','Gorjiabad',2174,11595),
+('IR','MAZ','gol-chini-11601','گل چينی','Gol Chini',1038,11601),
+('IR','MAZ','boneh-kenar-11706','بنه کنار','Boneh Kenar',1305,11706),
+('IR','MAZ','bezmilabad-11709','بزمين آباد','Bezmilabad',1000,11709),
+('IR','MAZ','baqer-tangeh-11717','باقر تنگه','Baqer Tangeh',6213,11717),
+('IR','MAZ','zir-ab-11725','بالا زيراب','Zir Ab',16191,11725),
+('IR','MAZ','bala-ahmad-kola-11754','بالا احمد كلا','Bala Ahmad Kola',1277,11754),
+('IR','MAZ','ahi-dasht-11790','آهو دشت','Ahi Dasht',4092,11790),
+('IR','ARD','lahrud-13219','لاری','Lahrud',2149,13219),
+('IR','LOR','oshtorinan-14203','اشترینان','Oshtorinan',5520,14203),
+('IR','HAM','samen-14276','سامن','Samen',3873,14276),
+('IR','MRK','khaneqah-e-olya-14298','خانقاه عليا','Khaneqah-e ''Olya',1031,14298),
+('IR','HAM','eslamabad-14311','اسلام آباد','Eslamabad',4031,14311),
+('IR','CHB','deh-e-nowmilas-e-sofla-14505','ده نو ميلاس','Deh-e Nowmilas-e Sofla',4131,14505),
+('IR','CHB','bagh-anar-e-milas-15202','باغ انار ميلاس','Bagh Anar-e Milas',3132,15202),
+('IR','ARD','nir-15269','شهرستان نير','Nir',5873,15269),
+('IR','RKH','sar-howzak-15315','سر حوضک','Sar Howzak',1438,15315),
+('IR','RKH','nasrabad-15335','نصر آباد','Nasrabad',2182,15335),
+('IR','RKH','mazdeh-15346','مزده','Mazdeh',2648,15346),
+('IR','RKH','bezanjerd-15418','بزنجرد','Bezanjerd',1245,15418),
+('IR','RKH','deh-now-15650','دهنو','Deh Now',4279,15650),
+('IR','RKH','zendeh-jan-15727','زنده جان','Zendeh Jan',1786,15727),
+('IR','ARD','angut-16977','تازه كند','Angut',2645,16977),
+('IR','ARD','pareh-vanlu-17049','پره وانلو','Pareh Vanlu',721,17049),
+('IR','EAZ','qayah-bashi-17156','قية باشى بزرج','Qayah Bashi',1456,17156),
+('IR','EAZ','janan-lu-17428','جانان لو','Janan Lu',1742,17428),
+('IR','ARD','owltan-17475','اولتان','Owltan',3622,17475),
+('IR','ARD','ajirlu-17511','ابراهیم آباد اجيرلو','Ajirlu',4259,17511),
+('IR','EAZ','taleb-khan-17608','طالب خان','Taleb Khan',2848,17608),
+('IR','EAZ','shadbad-e-olya-17641','شادباد علیا','Shadbad-e ''Olya',2229,17641),
+('IR','EAZ','serej-17649','سرج','Serej',1363,17649),
+('IR','WAZ','sengan-17651','سنگان','Sengan',1198,17651),
+('IR','EAZ','qeshlaq-e-chelqa-i-17719','قشلاق چلغایی','Qeshlaq-e Chelqa''i',3412,17719),
+('IR','EAZ','qareh-khezer-17736','قره خضر','Qareh Khezer',1813,17736),
+('IR','EAZ','qandhar-17760','قندهار','Qandhar',1436,17760),
+('IR','EAZ','meydan-jiq-17832','میدان جیق','Meydan Jiq',2087,17832),
+('IR','EAZ','lahijan-17861','لاهیجان','Lahijan',5430,17861),
+('IR','EAZ','khasabad-17898','خاص اباد','Khasabad',1370,17898),
+('IR','EAZ','khan-amir-17902','خان امیر','Khan Amir',2381,17902),
+('IR','EAZ','kalajah-17921','کلجاه','Kalajah',1593,17921),
+('IR','EAZ','firuz-salar-18041','فیروز سالار','Firuz Salar',2582,18041),
+('IR','EAZ','dush-18052','دوش','Dush',1003,18052),
+('IR','EAZ','chavan-18111','چاوان','Chavan',2457,18111),
+('IR','EAZ','bayram-18141','بایرام','Bayram',2982,18141),
+('IR','EAZ','bayqut-18142','بایقوت','Bayqut',3920,18142),
+('IR','EAZ','akhi-jahan-18179','آخی جهان','Akhi Jahan',2424,18179),
+('IR','WAZ','gerdevan-20824','گردوان','Gerdevan',1342,20824),
+('IR','WAZ','berasb-20834','براسب','Berasb',1031,20834),
+('IR','WAZ','razhan-20859','راژان','Razhan',3783,20859),
+('IR','WAZ','band-21098','بند','Band',4769,21098),
+('IR','WAZ','nushin-21173','نوشين','Nushin',8380,21173),
+('IR','EAZ','qarah-aghaj-22451','قره آغاج','Qarah Aghaj',0,22451),
+('IR','EAZ','asfestan-22867','اسفستان','Asfestan',1146,22867),
+('IR','EAZ','andarab-22893','اندراب','Andarab',2296,22893),
+('IR','EAZ','bostanabad-23290','بستان آباد','Bostanabad',21734,23290),
+('IR','KRD','varmahang-23334','ورمهنگ','Varmahang',1125,23334),
+('IR','KRD','lown-e-sadat-23677','لون سادات','Lown-e Sadat',1316,23677),
+('IR','KSH','kahriz-23814','کهریز','Kahriz',6457,23814),
+('IR','LOR','nurabad-24851','نور آباد','Nurabad',65547,24851),
+('IR','KSH','javanrud-25883','جوانرود','Javanrud',54354,25883),
+('IR','RKH','firuzeh-26018','فیروزه','Firuzeh',5884,26018),
+('IR','WAZ','mahmudabad-26652','محمود آباد جیق','Mahmudabad',6866,26652),
+('IR','LOR','kuhnani-27301','کونانی','Kuhnani',7768,27301),
+('IR','ILM','pahleh-27437','زرّین آباد','Pahleh',3870,27437),
+('IR','ILM','gandab-28304','گنداب','Gandab',1116,28304),
+('IR','GIL','lichah-28769','لیچاء','Lichah',1648,28769),
+('IR','GIL','lulaman-28776','لولمان','Lulaman',7426,28776),
+('IR','GIL','fashtakeh-28899','فشتكه','Fashtakeh',1901,28899),
+('IR','GIL','talesh-mahalleh-28920','تالش محله','Talesh Mahalleh',1061,28920),
+('IR','GIL','pahmadan-29203','پهمدان','Pahmadan',1682,29203),
+('IR','RKH','khalilabad-29549','خلیل آباد','Khalilabad',1080,29549),
+('IR','RKH','ahmadabad-29557','احمد آباد','Ahmadabad',1876,29557),
+('IR','SKH','eslamiyeh-30400','اسلامیه','Eslamiyeh',7108,30400),
+('IR','RKH','firuzeh-31020','بزغان','Firuzeh',0,31020),
+('IR','RKH','deheshk-31110','دهشک','Deheshk',1223,31110),
+('IR','RKH','shotorak-31193','شترک','Shotorak',3315,31193),
+('IR','RKH','kashaf-31213','کشف','Kashaf',11459,31213),
+('IR','RKH','shahid-kamju-31239','شایع','Shahid Kamju',1171,31239),
+('IR','RKH','kazemabad-31240','کاظم آباد','Kazemabad',3102,31240),
+('IR','RKH','gorji-ye-olya-31241','گرجی','Gorji-ye ''Olya',2394,31241),
+('IR','RKH','zarki-31242','ریرکن','Zarki',1107,31242),
+('IR','RKH','borzeshabad-31246','برزش آباد','Borzeshabad',1288,31246),
+('IR','RKH','kalat-e-naderi-31265','کلات','Kalat-e Naderi',0,31265),
+('IR','RKH','siasak-31269','سیاسک','Siasak',4311,31269),
+('IR','RKH','dehrud-31321','ده رود','Dehrud',11869,31321),
+('IR','RKH','hemmatabad-31526','همت آباد','Hemmatabad',1612,31526),
+('IR','RKH','gajvan-31618','گجوان','Gajvan',1222,31618),
+('IR','LOR','shahrak-e-almahdi-31988','شهرک المهدی','Shahrak-e Almahdi',4261,31988),
+('IR','SEM','istgah-e-rah-ahan-e-garmsar-32723','ايستگاه راهاهن گَرمسار','Istgah-e Rah Ahan-e Garmsar',49491,32723),
+('IR','THR','golzar-e-bala-32733','حصار كلك','Golzar-e Bala',5897,32733),
+('IR','THR','reyhanabad-32761','ريحان آباد','Reyhanabad',4439,32761),
+('IR','THR','qarchak-32767','قرچك','Qarchak',251834,32767),
+('IR','THR','salehieh-32843','شهرک صالح آباد','Salehieh',58683,32843),
+('IR','THR','yusef-reza-32860','قشلاق یوسف رضا','Yusef Reza',1453,32860),
+('IR','THR','khavar-shahr-32895','خاور شهر','Khavar Shahr',13203,32895),
+('IR','THR','golestan-32900','شهرك گلستان','Golestan',240000,32900),
+('IR','THR','shahrak-e-emam-hasan-32904','شهرک امام حسن','Shahrak-e Emam Hasan',5394,32904),
+('IR','THR','shahre-jadide-andisheh-32909','شهر جدید اندیشه','Shahre Jadide Andisheh',116062,32909),
+('IR','THR','sefidar-32918','سِفيدار','Sefidar',6529,32918),
+('IR','THR','qeshlaq-e-pa-in-32948','قشلاق داود آباد','Qeshlaq-e Pa''in',6177,32948),
+('IR','THR','parandak-32973','شَهرَكِ پَرَندَك','Parandak',5038,32973),
+('IR','THR','morteza-gerd-32996','مرتضی گرد','Morteza Gerd',15506,32996),
+('IR','THR','ja-farabad-e-akhavan-33047','جعفر آباد اخوان','Ja''farabad-e Akhavan',1786,33047),
+('IR','THR','hamadanak-33054','همدانک','Hamadanak',11216,33054),
+('IR','THR','gol-abbas-33061','قِشلاق گُلِ عَبّاس','Gol ''Abbas',1391,33061),
+('IR','THR','ferdowsiyeh-33069','برات آباد','Ferdowsiyeh',34221,33069),
+('IR','THR','alvard-33113','الورد','Alvard',1475,33113),
+('IR','ISF','hasanabad-e-vosta-33144','حسن آباد وسطی','Hasanabad-e Vosta',1421,33144),
+('IR','CHB','azadegan-33219','آزادگان','Azadegan',789,33219),
+('IR','CHB','samsami-33311','دو آب','Samsami',1203,33311),
+('IR','RKH','hajji-yar-33956','حاجی یار','Hajji Yar',1117,33956),
+('IR','RKH','federd-34233','فدرد','Federd',1470,34233),
+('IR','EAZ','hadishahr-35017','هادی شهر','Hadishahr',34346,35017),
+('IR','EAZ','oghlu-35057','اغلو','Oghlu',2651,35057),
+('IR','EAZ','markid-35099','مرکید','Markid',3104,35099),
+('IR','WAZ','babelabad-35153','بابل آباد','Babelabad',1200,35153),
+('IR','EAZ','maqsudlu-35637','مقصودلو','Maqsudlu',799,35637),
+('IR','ARD','hiq-35705','حيق','Hiq',1188,35705),
+('IR','ARD','fakhrabad-35737','فخر آباد','Fakhrabad',999,35737),
+('IR','HAM','nezamabad-35953','نظام آباد','Nezamabad',1408,35953),
+('IR','HAM','gonbadan-36042','گنبدان','Gonbadan',1233,36042),
+('IR','HAM','omman-36170','عمان','''Omman',2305,36170),
+('IR','KHZ','shahrak-e-towhid-36274','شهرک توحید','Shahrak-e Towhid',2451,36274),
+('IR','KHZ','sharafat-36278','شرافت','Sharafat',11757,36278),
+('IR','KHZ','saleh-shahr-36281','شهرک شهید چمران','Saleh Shahr',7309,36281),
+('IR','KHZ','shahrak-e-salman-farsi-36286','شهرک سلمان فارسی','Shahrak-e Salman Farsi',6418,36286),
+('IR','KHZ','shahrak-e-shahid-mohammad-nuri-36288','شهرک شهيد محمد نوری','Shahrak-e Shahid Mohammad Nuri',4256,36288),
+('IR','KHZ','shahrak-e-mohajerin-36290','شهرک مهاجران','Shahrak-e Mohajerin',3774,36290),
+('IR','KHZ','shahrak-e-kheybar-36293','شهرک خیبر','Shahrak-e Kheybar',2301,36293),
+('IR','KHZ','azadi-36299','شهرک آزادی','Azadi',4957,36299),
+('IR','KHZ','montazeran-36300','زراعی شوش','Montazeran',3804,36300),
+('IR','KHZ','gavmishabad-e-sharqi-36573','گاومیش آباد شرقی','Gavmishabad-e Sharqi',2569,36573),
+('IR','KHZ','gavmishabad-36574','گاومیش آباد','Gavmishabad',5722,36574),
+('IR','KHZ','choghamish-36652','دولتی','Choghamish',2013,36652),
+('IR','GIL','davan-37170','داوان','Davan',1064,37170),
+('IR','GIL','lisar-37184','لیسار','Lisar',3647,37184),
+('IR','GIL','qoruq-37193','قرق','Qoruq',1223,37193),
+('IR','GIL','ahmad-sar-gurab-37382','احمد سر گوراب','Ahmad Sar Gurab',2128,37382),
+('IR','GIL','viznah-37648','ویزنه','Viznah',3022,37648),
+('IR','ARD','omidcheh-37767','اُميدچِه','Omidcheh',1710,37767),
+('IR','GIL','lalakah-mahalleh-37816','للکه محله','Lalakah Mahalleh',2713,37816),
+('IR','ARD','keriq-37852','کریق','Keriq',1278,37852),
+('IR','ARD','beris-37957','بریس','Beris',1322,37957),
+('IR','GIL','haviq-38003','اشیک آغاسی','Haviq',4261,38003),
+('IR','ARD','arallu-38007','آراللوی بزرگ','Arallu',2650,38007),
+('IR','ARD','aladizgeh-38035','آلاديزگه','Aladizgeh',1850,38035),
+('IR','ARD','hur-38075','حور','Hur',3248,38075),
+('IR','CHB','yunaki-38274','وَنَکی','Yunaki',1449,38274),
+('IR','GLS','yesaqi-39140','يساقی','Yesaqi',4093,39140),
+('IR','GLS','qarah-qashli-39189','قره قاشلی','Qarah Qashli',2731,39189),
+('IR','GLS','aliabad-e-kenar-shahr-39203','علی آباد','''Aliabad-e Kenar Shahr',1163,39203),
+('IR','GLS','sarkhonkalateh-39227','سرخنکلاته','Sarkhonkalateh',7589,39227),
+('IR','GLS','sali-kandeh-39542','سالی كنده','Sali Kandeh',1623,39542),
+('IR','GLS','alu-kalateh-39571','آلو كلاته','Alu Kalateh',2572,39571),
+('IR','GLS','chahar-chenar-39572','چهار چنار','Chahar Chenar',1055,39572),
+('IR','GLS','jelin-39590','جلین','Jelin',7417,39590),
+('IR','SEM','moghan-39770','مغان','Moghan',1631,39770),
+('IR','GLS','aq-qayeh-39874','آق قايِه','Aq Qayeh',5114,39874),
+('IR','GLS','sarli-makhtum-39875','سارلی مختوم','Sarli Makhtum',1695,39875),
+('IR','GLS','igder-e-pa-in-39881','ايگدر پائين','Igder-e Pa''in',2825,39881),
+('IR','GLS','tamer-e-qarah-quzi-39915','تمرقره قوزی','Tamer-e Qarah Quzi',4535,39915),
+('IR','GLS','hali-akhund-40000','حالی آخوند','Hali Akhund',2209,40000),
+('IR','GLS','tutli-ye-kuchak-40008','توتلی كوچك','Tutli-ye Kuchak',1311,40008),
+('IR','GLS','poli-hajji-40017','قلی حاجی','Poli Hajji',3055,40017),
+('IR','GLS','mohammad-qoli-akhund-40030','ایمر','Mohammad Qoli Akhund',1158,40030),
+('IR','GLS','gomishan-40047','گميش تپه','Gomishan',19191,40047),
+('IR','GLS','khivali-40089','خيولی','Khivali',1234,40089),
+('IR','GLS','kord-40091','كرد','Kord',2234,40091),
+('IR','GLS','gadamabad-40182','گدم آباد','Gadamabad',8250,40182),
+('IR','WAZ','zaviyeh-e-hasan-khan-40344','زاویّه حسن خان','Zaviyeh-e Hasan Khan',1311,40344),
+('IR','WAZ','yazdekan-40358','یزدکان','Yazdekan',2437,40358),
+('IR','WAZ','dizaj-e-jamshid-khan-40579','دیزج جمشید خان','Dizaj-e Jamshid Khan',387,40579),
+('IR','WAZ','ezzatabad-40672','ایزد آباد','''Ezzatabad',1912,40672),
+('IR','WAZ','azab-40680','عذاب','''Azab',1575,40680),
+('IR','ZAN','pir-saqqa-41097','پير زاغه','Pir Saqqa',1878,41097),
+('IR','GIL','pa-in-e-bazar-e-rudbar-41151','رودبار','Pa''in-e Bazar-e Rudbar',0,41151),
+('IR','ZAN','khorramdarreh-41210','خرمدره','Khorramdarreh',50528,41210),
+('IR','ZAN','qal-eh-ye-hoseyniyeh-41211','قلعه حسينيه','Qal''eh-ye Hoseyniyeh',2534,41211),
+('IR','GIL','juben-41264','جوبن','Juben',1478,41264),
+('IR','GIL','padegan-e-manjil-41428','پادگان منجیل','Padegan-e Manjil',17396,41428),
+('IR','ALB','malekabad-41466','ملكاباد حمام لو','Malekabad',15296,41466),
+('IR','ALB','kamalshahr-41548','قَرَنطينِۀ كَمال آباد','Kamalshahr',141669,41548),
+('IR','THR','qebchaq-41551','قبچاق','Qebchaq',2117,41551),
+('IR','ALB','qasemabad-e-kuchak-41556','قاسم آباد کوچک','Qasemabad-e Kuchak',1901,41556),
+('IR','ALB','shahrak-e-mohandesi-ye-zera-i-41589','شهرک مهندسی زِراعی','Shahrak-e Mohandesi-ye Zera''i',16104,41589),
+('IR','ALB','sorkhab-41626','سرخاب','Sorkhab',2615,41626),
+('IR','ALB','dangizak-41642','دنگيزک','Dangizak',1583,41642),
+('IR','ALB','chaharbagh-41672','چهار باغ','Chaharbagh',48828,41672),
+('IR','ALB','sonqorabad-41880','سنقر آباد','Sonqorabad',1777,41880),
+('IR','THR','qeshlaq-41979','قشلاق','Qeshlaq',5110,41979),
+('IR','THR','esfandabad-41981','اسفند آباد','Esfandabad',3311,41981),
+('IR','THR','yusefabad-e-qavam-41984','يوسف آباد','Yusefabad-e Qavam',4895,41984),
+('IR','THR','yabarak-42018','یبارک','Yabarak',2478,42018),
+('IR','ILM','mazhin-42098','دو آب','Mazhin',1512,42098),
+('IR','KHZ','seyyed-rahman-42203','سید رحیمه','Seyyed Rahman',1138,42203),
+('IR','KHZ','nezeheh-42281','قیزانیه کوچک','Nezeheh',2947,42281),
+('IR','KHZ','eyn-e-do-42517','سید کریم','''Eyn-e Do',17653,42517),
+('IR','KER','ezzatabad-43630','عزت آباد','''Ezzatabad',2085,43630),
+('IR','BUS','samal-e-jonubi-43960','سمل جنوبی','Samal-e Jonubi',1172,43960),
+('IR','FRS','kheyrabad-44035','خیر آباد','Kheyrabad',1589,44035),
+('IR','BUS','shabankareh-44100','ده كهنه','Shabankareh',7900,44100),
+('IR','BUS','ab-pakhsh-44172','آب پخش','Ab Pakhsh',18913,44172),
+('IR','FRS','vali-asr-44360','قلعه ولیعصر','Vali''asr',1344,44360),
+('IR','FRS','kavar-44439','کوار','Kavar',31711,44439),
+('IR','FRS','forud-44471','فرود','Forud',2043,44471),
+('IR','KHZ','minushahr-45041','مينوشهر','Minushahr',2231,45041),
+('IR','KHZ','shahrak-e-taleqani-45628','شهرک طالقانی','Shahrak-e Taleqani',25808,45628),
+('IR','KBA','mehrian-46554','آب پَخشكُن','Mehrian',9421,46554),
+('IR','KBA','sarab-e-taveh-46663','سراب تاوه سفلی','Sarab-e Taveh',11195,46663),
+('IR','FRS','hajjiabad-47097','حاجی آباد','Hajjiabad',1121,47097),
+('IR','FRS','ab-barik-47723','آب باریک','Ab Barik',1521,47723),
+('IR','HRZ','sarmast-48240','سرمست','Sarmast',1454,48240),
+('IR','KER','nowdezh-48464','دهنه نو دژ','Nowdezh',5562,48464),
+('IR','FRS','chah-kur-48783','چاه کور','Chah Kur',1180,48783),
+('IR','FRS','emam-shahr-48822','امام شهر','Emam Shahr',5803,48822),
+('IR','FRS','abadeh-48918','آباده','Abadeh',59116,48918),
+('IR','FRS','alaviyeh-48931','بابا عرب','''Alaviyeh',2208,48931),
+('IR','KBA','yasuj-66093','ياسوج','Yasuj',96786,66093),
+('IR','YAZ','ashkezar-66250','آشكَكزار','Ashkezar',19123,66250),
+('IR','KBA','tall-khosrow-66479','تل خسرو','Tall Khosrow',4534,66479),
+('IR','FRS','mobarakabad-67431','مبارک آباد','Mobarakabad',1204,67431),
+('IR','ISF','hoseynabad-68168','حسین آباد','Hoseynabad',1743,68168),
+('IR','GIL','bazar-jom-eh-ye-shanderman-69018','بازار جمعه','Bazar Jom''eh-ye Shanderman',5729,69018),
+('IR','KBA','balahzar-69085','بلهزار','Balahzar',3478,69085),
+('IR','KHZ','tall-bumeh-110790','تل بومه','Tall Bumeh',1206,110790),
+('IR','CHB','taqanak-110829','طاقانك','Taqanak',6170,110829),
+('IR','GLS','azadshahr-110831','آزاد شهر','Azadshahr',47590,110831),
+('IR','EAZ','zonuz-110920','زنوز','Zonuz',2465,110920),
+('IR','HRZ','ziarat-ali-111027','زیارت علی','Ziarat ''Ali',2679,111027),
+('IR','BUS','ziarat-111038','زيارت','Ziarat',2758,111038),
+('IR','QAZ','ziaran-111052','زياران','Ziaran',3749,111052),
+('IR','GIL','zeyabar-111058','ضیابر','Zeyabar',3603,111058),
+('IR','QAZ','zia-abad-111060','ضیا آباد','Zia''abad',8262,111060),
+('IR','KER','zeydabad-111130','زید آباد','Zeydabad',9112,111130),
+('IR','KER','zehkalut-111171','امير آباد زهکلوت','Zehkalut',6835,111171),
+('IR','MRK','zaviyeh-111192','زاویه','Zaviyeh',6027,111192),
+('IR','MAZ','zavat-e-sharq-111202','ذَواتِ شَرق','Zavat-e Sharq',1276,111202),
+('IR','ZAN','zarrinabad-111246','زرین آباد','Zarrinabad',2374,111246),
+('IR','EAZ','zarnaq-111275','زرنق','Zarnaq',5343,111275),
+('IR','FRS','zarjan-111299','زرجان','Zarjan',1400,111299),
+('IR','KHZ','zargan-e-karaneh-111325','زرگان','Zargan-e Karaneh',7744,111325),
+('IR','FRS','zarqan-111327','زرقان','Zarqan',32261,111327),
+('IR','YAZ','zarach-111407','اشکذر','Zarach',11691,111407),
+('IR','KER','zarand-111421','زرند','Zarand',58983,111421),
+('IR','ILM','zanjireh-ye-olya-111446','زنجیره علیا','Zanjireh-ye ''Olya',2724,111446),
+('IR','ZAN','zanjan-111453','زنجان','Zanjan',357471,111453),
+('IR','KER','zangiabad-111475','زنگی آباد','Zangiabad',8568,111475),
+('IR','FRS','zangiabad-111476','زنگی آباد','Zangiabad',4273,111476),
+('IR','THR','zamanabad-111539','زمان آباد','Zamanabad',4000,111539),
+('IR','ALB','zakiabad-111576','زكی آباد','Zakiabad',1306,111576),
+('IR','FRS','zahed-shahr-111613','زاهد شهر','Zahed Shahr',9719,111613),
+('IR','ZAN','yengi-kand-e-seyyedlar-111745','يَنگی كَندِ سِيِّدلَر','Yengi Kand-e Seyyedlar',1168,111745),
+('IR','ISF','yazdel-111808','يزدل','Yazdel',2391,111808),
+('IR','YAZ','yazd-111822','يزد','Yazd',477905,111822),
+('IR','ALB','yengi-emam-111887','ینگی امام','Yengi Emam',4999,111887),
+('IR','CHB','yan-cheshmeh-111895','يان چشمه','Yan Cheshmeh',2190,111895),
+('IR','EAZ','yamchi-111904','یامچی','Yamchi',10392,111904),
+('IR','EAZ','payam-111911','يام','Payam',1135,111911),
+('IR','EAZ','yalquz-aghaj-111914','یالقوز آغاج','Yalquz Aghaj',3537,111914),
+('IR','MRK','yalabad-111927','يل آباد','Yalabad',3761,111927),
+('IR','ZAN','veyar-111987','ویر','Veyar',3548,111987),
+('IR','LOR','vasian-112025','وَسيان','Vasian',1817,112025),
+('IR','KHZ','veys-112029','ویس','Veys',15312,112029),
+('IR','MAZ','vanush-112047','ونوش','Vanush',2669,112047),
+('IR','ALB','velayat-rud-112057','ولایت رود','Velayat Rud',1382,112057),
+('IR','EAZ','varazqan-112121','ورزقان','Varazqan',5348,112121),
+('IR','ISF','varzaneh-112124','ورزنه','Varzaneh',12714,112124),
+('IR','EAZ','varjavi-112160','ورجوی','Varjavi',2989,112160),
+('IR','ALB','fardis-112179','فرديس','Fardis',0,112179),
+('IR','CHB','vardanjan-112191','وردنجان','Vardanjan',4456,112191),
+('IR','HAM','varayneh-112205','ور آینه','Varayneh',1719,112205),
+('IR','FRS','varavi-112207','وراوی','Varavi',4622,112207),
+('IR','THR','varamin-112214','ورامين','Varamin',225628,112214),
+('IR','WAZ','var-112226','وار','Var',4808,112226),
+('IR','CHB','vanan-112255','وانان','Vanan',2750,112255),
+('IR','ISF','vanak-112261','ونک','Vanak',1665,112261),
+('IR','MAZ','valuja-112272','ولوجا','Valuja',1882,112272),
+('IR','ALB','bineh-112283','بینه','Bineh',1420,112283),
+('IR','MAZ','valiabad-112286','ولی آباد','Valiabad',3548,112286),
+('IR','MRK','vafs-112351','وفس','Vafs',1607,112351),
+('IR','HAM','ozundarreh-112365','ازوندره','Ozundarreh',2245,112365),
+('IR','HAM','tuyserkan-112422','تویسرکان','Tuyserkan',50455,112422),
+('IR','KBA','tut-e-nadeh-112435','توت نده','Tut-e Nadeh',1510,112435),
+('IR','GIL','tutkabon-112439','توتک بن','Tutkabon',1510,112439),
+('IR','RKH','tus-e-sofla-112465','توس سفلی','Tus-e Sofla',3114,112465),
+('IR','MRK','tureh-112478','توره','Tureh',2302,112478),
+('IR','ARD','towlash-112578','طولش','Towlash',1770,112578),
+('IR','HRZ','tula-112579','شهرک صعنتی طولا','Tula',5874,112579),
+('IR','SEM','torud-112601','ترود','Torud',1813,112601),
+('IR','RKH','torqabeh-112616','طرقبه','Torqabeh',20998,112616),
+('IR','EAZ','torkaman-112634','ترکمان','Torkaman',7443,112634),
+('IR','YAZ','torkabad-112637','ترك آباد','Torkabad',3714,112637),
+('IR','RKH','torbat-e-heydariyeh-112646','تربت حیدریه','Torbat-e Heydariyeh',140019,112646),
+('IR','MAZ','tonekabon-112656','تنکابن','Tonekabon',37501,112656),
+('IR','HRZ','tomban-112676','تمبان','Tomban',1199,112676),
+('IR','HRZ','tirur-112777','تيرور','Tirur',4871,112777),
+('IR','MAZ','tir-tash-112782','تير تاش','Tir Tash',2551,112782),
+('IR','EAZ','til-112835','تیل','Til',3303,112835),
+('IR','CHB','teshniz-112896','تشنيز','Teshniz',1538,112896),
+('IR','THR','tehran-112931','تهران','Tehran',7153309,112931),
+('IR','FRS','tasuj-113074','طسوج','Tasuj',4555,113074),
+('IR','FRS','abadeh-tashk-113090','abadہ tshk','Abadeh Tashk',7379,113090),
+('IR','QAZ','tarvizak-113116','تبريزك','Tarvizak',1019,113116),
+('IR','KHZ','torkalaki-113151','ترکالکی','Torkalaki',5688,113151),
+('IR','ALB','tankaman-113293','تنكمان','Tankaman',4654,113293),
+('IR','GIL','hashtpar-113343','هشتپر','Hashtpar',45305,113343),
+('IR','GIL','talem-seh-shanbeh-113349','تالم سه شنبه','Talem Seh Shanbeh',2687,113349),
+('IR','THR','taleb-abad-113363','طالب آباد','Taleb abad',4850,113363),
+('IR','HRZ','takht-113486','تخت','Takht',3082,113486),
+('IR','QAZ','takestan-113491','تاكستان','Takestan',71499,113491),
+('IR','WAZ','takab-113508','تکاب','Takab',51541,113508),
+('IR','THR','tajrish-113514','تجريش','Tajrish',86000,113514),
+('IR','HAM','rasulabad-e-sofla-113552','تاج آباد پاين','Rasulabad-e Sofla',1901,113552),
+('IR','YAZ','herat-113556','شهر هرات','Herat',13032,113556),
+('IR','BUS','bandar-e-siraf-113596','بندر طاهری','Bandar-e Siraf',6992,113596),
+('IR','GIL','taher-gurab-113597','طاهر گوراب','Taher Gurab',1168,113597),
+('IR','ISF','taherabad-113604','طاهر آباد','Taherabad',2674,113604),
+('IR','YAZ','taft-113632','تفت','Taft',18464,113632),
+('IR','MRK','tafresh-113636','تفرش','Tafresh',16493,113636),
+('IR','FRS','tafihan-113637','تفهیان','Tafihan',6170,113637),
+('IR','EAZ','tabriz-113646','تبريز','Tabriz',1424641,113646),
+('IR','HRZ','tabl-113650','تَبی','Tabl',4069,113650),
+('IR','YAZ','tabas-113659','شہرستان طبس','Tabas',49993,113659),
+('IR','MRK','tabarteh-113660','تبرته','Tabarteh',1064,113660),
+('IR','RKH','tabadakan-113676','تبادکان','Tabadakan',1596,113676),
+('IR','HRZ','suza-113684','بندر سوزا','Suza',5707,113684),
+('IR','FRS','surian-113723','بوانات','Surian',20000,113723),
+('IR','CHB','sureshjan-113732','سورشجان','Sureshjan',12308,113732),
+('IR','GIL','sura-posht-113738','سورا پشت','Sura Posht',1535,113738),
+('IR','MAZ','surak-113760','سورک','Surak',9208,113760),
+('IR','THR','suleqan-113791','سولقان','Suleqan',5013,113791),
+('IR','MAZ','nur-113797','سولدِه','Nur',26947,113797),
+('IR','ZAN','su-kahriz-113816','سو كهريز','Su Kahriz',2560,113816),
+('IR','ARD','suha-113818','سو‌ها','Suha',1958,113818),
+('IR','CHB','sud-jan-113839','سود جان','Sud Jan',5581,113839),
+('IR','HAM','subashi-113844','سوباشی','Subashi',1384,113844),
+('IR','EAZ','sis-113848','ستس','Sis',6106,113848),
+('IR','GIL','sowme-eh-sara-113860','صومعه سرا','Sowme''eh Sara',47083,113860),
+('IR','MAZ','sorkhrud-e-gharbi-113902','سُرخ رود','Sorkhrud-e Gharbi',6699,113902),
+('IR','SEM','sorkheh-113952','سرخه','Sorkheh',9951,113952),
+('IR','KSH','sonqor-114049','سنقر','Sonqor',44256,114049),
+('IR','RKH','soltanabad-114105','سلطان آباد','Soltanabad',0,114105),
+('IR','QAZ','eqbaliyeh-114106','اقبالیه','Eqbaliyeh',55066,114106),
+('IR','RKH','soltanabad-114110','سلطان آباد','Soltanabad',2078,114110),
+('IR','FRS','soltanabad-114131','سلطان آباد','Soltanabad',8734,114131),
+('IR','ZAN','sojas-114163','سجاس','Sojas',7037,114163),
+('IR','FRS','soghad-114196','صغاد','Soghad',12582,114196),
+('IR','MAZ','shirud-114242','شيررود','Shirud',11377,114242),
+('IR','KER','sirjan-114259','سيرجان','Sirjan',199704,114259),
+('IR','FRS','simakan-114320','سیمکان','Simakan',410,114320),
+('IR','WAZ','silvana-114323','سيلوانِه','Silvana',1614,114323),
+('IR','GIL','siahkal-114489','سیاهکل','Siahkal',19924,114489),
+('IR','WAZ','siah-baz-114521','سِيِّد عَبّاس','Siah Baz',2045,114521),
+('IR','KHZ','shushtar-114584','شوشتر','Shushtar',101878,114584),
+('IR','KHZ','shush-114593','شوش','Shush',77148,114593),
+('IR','EAZ','shur-daraq-114650','شور درق','Shur Daraq',1021,114650),
+('IR','BUS','shureki-114670','شوركی','Shureki',1415,114670),
+('IR','MAZ','shumia-114805','شوما','Shumia',1049,114805),
+('IR','EAZ','shoja-114894','شجاع','Shoja''',2538,114894),
+('IR','ZAN','shiveh-114911','شیوه','Shiveh',1439,114911),
+('IR','EAZ','shishavan-114921','شيشَوان','Shishavan',3737,114921),
+('IR','KRD','shirvaneh-114927','شیروانه','Shirvaneh',2092,114927),
+('IR','NKH','shirvan-114930','شیروان','Shirvan',82790,114930),
+('IR','BUS','bandar-e-shirinu-114966','بندر شیرینو','Bandar-e Shirinu',9976,114966),
+('IR','MAZ','shir-gah-115001','شير گاه','Shir Gah',0,115001),
+('IR','EAZ','shiraz-115018','شیراز','Shiraz',1995,115018),
+('IR','FRS','shiraz-115019','شيراز','Shiraz',1249942,115019),
+('IR','EAZ','shiramin-115028','شير اَمين','Shiramin',3282,115028),
+('IR','CHB','sheykh-shaban-115095','شيخ شبان','Sheykh Shaban',2683,115095),
+('IR','HAM','shurin-115223','شورین','Shurin',4473,115223),
+('IR','RKH','sheshtamad-115226','ششتمد','Sheshtamad',3108,115226),
+('IR','CHB','shesh-bahreh-ye-bala-115236','شش بهره بالا','Shesh Bahreh-ye Bala',1435,115236),
+('IR','EAZ','shendabad-115247','شند آباد','Shendabad',8489,115247),
+('IR','ZAN','shevir-115317','شوير','Shevir',1850,115317),
+('IR','QAZ','sharifabad-115382','شریف آباد','Sharifabad',20347,115382),
+('IR','THR','sharifabad-115388','شريف آباد','Sharifabad',8870,115388),
+('IR','FRS','shapur-jan-115456','شاهپورجان','Shapur Jan',10280,115456),
+('IR','KHZ','mianrud-115491','ساسان','Mianrud',10110,115491),
+('IR','YAZ','shamsi-115497','شمس آباد','Shamsi',1267,115497),
+('IR','KHZ','shamsabad-115532','شمس آباد','Shamsabad',10858,115532),
+('IR','CHB','shamsabad-115533','شمس آباد','Shamsabad',2609,115533),
+('IR','HRZ','shamil-e-bala-115558','شميل','Shamil-e Bala',3028,115558),
+('IR','GIL','shalman-115580','بیجار پشت محله شلمان','Shalman',5102,115580),
+('IR','CHB','shalamzar-115607','شلمزار','Shalamzar',6899,115607),
+('IR','QAZ','shal-115615','شال','Shal',15290,115615),
+('IR','MRK','ma-sumiyeh-115680','شهوه','Ma''sumiyeh',1959,115680),
+('IR','GIL','shahrestan-115757','شهرستان','Shahrestan',2385,115757),
+('IR','FRS','shahr-e-pir-115765','شهر پیر','Shahr-e Pir',8927,115765),
+('IR','CHB','shahr-e-kord-115770','شهر كرد','Shahr-e Kord',129153,115770),
+('IR','KER','shahr-e-babak-115781','شهر بابک','Shahr-e Babak',51620,115781),
+('IR','CHB','kian-115802','شهر کیان','Kian',12948,115802),
+('IR','THR','shahrabad-115808','شهر آباد','Shahrabad',822,115808),
+('IR','GLS','anbar-alum-115876','انبار آلوم','Anbar Alum',7003,115876),
+('IR','KRD','shahini-115912','شاهینی','Shahini',1663,115912),
+('IR','KER','shahdad-115960','شهداد','Shahdad',5217,115960),
+('IR','ARD','ja-farabad-116028','جَعفَر آباد','Ja''farabad',7226,116028),
+('IR','GIL','shaft-116076','شفت','Shaft',8184,116076),
+('IR','KHZ','shadegan-116102','شادگان','Shadegan',41733,116102),
+('IR','EAZ','shadbad-e-mashayekh-116105','شادباد مشایخ','Shadbad-e Mashayekh',5524,116105),
+('IR','KER','sha-abjereh-116124','شعبجره','Sha''abjereh',1883,116124),
+('IR','EAZ','shabestar-116126','شبستر','Shabestar',22181,116126),
+('IR','ILM','shabab-116137','شباب','Shabab',4088,116137),
+('IR','WAZ','seyyed-taj-od-din-116201','سیّد تاج الدّین','Seyyed Taj od Din',2612,116201),
+('IR','FRS','seyyedan-116319','سیدان','Seyyedan',8574,116319),
+('IR','WAZ','seyah-cheshmeh-116326','سياه چِشمِه','Seyah Cheshmeh',17804,116326),
+('IR','KBA','saruk-116337','سروك','Saruk',5130,116337),
+('IR','ISF','sen-sen-116374','سن سن','Sen Sen',1576,116374),
+('IR','RKH','senowbar-116375','صنوبر','Senowbar',2646,116375),
+('IR','MRK','senjan-116388','سنجان','Senjan',12249,116388),
+('IR','SEM','semnan-116402','سمنان','Semnan',124826,116402),
+('IR','ISF','semirom-116406','سمیرم','Semirom',26942,116406),
+('IR','HRZ','seh-gel-116431','سكل','Seh Gel',2187,116431),
+('IR','KHZ','seh-talvan-116434','سه تلون','Seh Talvan',1182,116434),
+('IR','ISF','seftejan-116499','سفتجان','Seftejan',1474,116499),
+('IR','EAZ','sefideh-khan-116518','اسپرج خوان','Sefideh Khan',1929,116518),
+('IR','KBA','sepidar-116550','سفیدار مرکزی','Sepidar',1503,116550),
+('IR','KHZ','sedeyen-e-yek-116626','تدین یک','sedeyen-e Yek',1082,116626),
+('IR','RKH','sedeh-116628','سده','Sedeh',4258,116628),
+('IR','MRK','saveh-116667','ساوه','Saveh',220762,116667),
+('IR','CHB','savad-jan-116669','سواد جان','Savad Jan',1316,116669),
+('IR','EAZ','satlu-116692','ساتلو','Satlu',1470,116692),
+('IR','HAM','setaq-116696','ستق','Setaq',1046,116696),
+('IR','FRS','sarvestan-116725','سروستان','Sarvestan',18187,116725),
+('IR','KRD','sarvabad-116739','سرو آباد','Sarvabad',5121,116739),
+('IR','MRK','saruq-116745','ساروق','Saruq',1345,116745),
+('IR','CHB','sarteshniz-116757','سرتشنيز','Sarteshniz',2919,116757),
+('IR','FRS','sar-mashhad-116884','سر مشهد','Sar Mashhad',2818,116884),
+('IR','BUS','sar-korreh-116900','سر كره','Sar Korreh',2062,116900),
+('IR','HRZ','sarju-iyeh-116949','سرجوئيه بالا','Sarju''iyeh',3938,116949),
+('IR','MAZ','sari-116996','سارى','Sari',255396,116996),
+('IR','EAZ','sara-eyn-117048','سَر عِين','Sara''eyn',5459,117048),
+('IR','EAZ','sardrud-117096','سردرود','Sardrud',29739,117096),
+('IR','WAZ','sardasht-117111','سردشت','Sardasht',46412,117111),
+('IR','KHZ','sardasht-117115','سردشت زیدون','Sardasht',6912,117115),
+('IR','HRZ','sardasht-117116','سردشت','Sardasht',1725,117116),
+('IR','KHZ','sardaran-117135','سردار آباد','Sardaran',5240,117135),
+('IR','SKH','sarbisheh-117204','سربیشه','Sarbisheh',8715,117204),
+('IR','THR','sarbandan-117218','سربندان','Sarbandan',3352,117218),
+('IR','SKH','sarayan-117232','سرایان','Sarayan',13795,117232),
+('IR','EAZ','saray-117234','سرای','Saray',1484,117234),
+('IR','KER','sar-asiab-e-shesh-117249','سر آسیاب شش','Sar Asiab-e Shesh',1968,117249),
+('IR','QOM','salafchegan-117287','سلفچگان','Salafchegan',1390,117287),
+('IR','ILM','sarableh-117304','سرابله','Sarableh',12393,117304),
+('IR','LOR','sarab-hammam-117338','سراب حمام','Sarab Hammam',4054,117338),
+('IR','LOR','sarab-e-dureh-117345','سراب دوره','Sarab-e Dureh',1713,117345),
+('IR','ILM','sarab-bagh-117362','سراب باغ','Sarab Bagh',2659,117362),
+('IR','EAZ','sarab-117368','سراب','Sarab',45031,117368),
+('IR','KRD','saqqez-117392','سقز','Saqqez',165258,117392),
+('IR','MRK','seqanliq-117410','سقانليق','Seqanliq',1036,117410),
+('IR','NKH','sankhvast-117422','سنخواست','Sankhvast',2077,117422),
+('IR','MAZ','sang-tarashan-117447','سنگ تراشان','Sang Tarashan',1712,117447),
+('IR','GIL','sangar-117461','سنگر','Sangar',12583,117461),
+('IR','GIL','sangachin-117552','سنگاچین','Sangachin',2305,117552),
+('IR','KRD','sanandaj-117574','سنندج','Sanandaj',349176,117574),
+('IR','CHB','saman-117627','سامان','Saman',14192,117627),
+('IR','BUS','samal-e-shomali-117629','سمل شمالی','Samal-e Shomali',1044,117629),
+('IR','WAZ','salmas-117656','سلماس','Salmas',81606,117656),
+('IR','THR','soleh-bon-117698','سله بن','Soleh Bon',1500,117698),
+('IR','HAM','salehabad-117708','ساليه آباد','Salehabad',7899,117708),
+('IR','RKH','salami-117741','سلامه','Salami',7555,117741),
+('IR','MAZ','ramsar-117773','رامسر','Ramsar',35997,117773),
+('IR','WAZ','shahin-dezh-117793','شاهین دژ','Shahin Dezh',41442,117793),
+('IR','ZAN','soltaniyeh-117799','سلطانيّه','Soltaniyeh',7638,117799),
+('IR','WAZ','sa-idabad-117808','سعید آباد','Sa''idabad',3255,117808),
+('IR','THR','sa-idabad-117814','سعيد آباد','Sa''idabad',16212,117814),
+('IR','KSH','sahneh-117835','صحنه','Sahneh',35508,117835),
+('IR','KRD','saheb-117869','صاحب','Saheb',3101,117869),
+('IR','QAZ','saggez-abad-117879','سنگر آباد','Saggez Abad',5492,117879),
+('IR','YAZ','sadrabad-117959','صدر آباد','Sadrabad',1475,117959),
+('IR','KHZ','seyyed-shavur-118013','سد شاوور','Seyyed Shavur',1114,118013),
+('IR','MAZ','katalem-va-sadat-shahr-118024','سادات شهر','Katalem va Sadat Shahr',20716,118024),
+('IR','BUS','sa-dabad-118048','سعد آباد','Sa''dabad',8248,118048),
+('IR','RKH','sabzevar-118063','سبزوار','Sabzevar',243700,118063),
+('IR','FRS','sa-adat-shahr-118123','سعادت شهر','Sa''adat Shahr',17131,118123),
+('IR','SEM','ruyan-118139','رویان','Ruyan',3770,118139),
+('IR','FRS','runiz-e-sofla-118152','رونیز سفلی','Runiz-e Sofla',1880,118152),
+('IR','FRS','runiz-118153','رونیز','Runiz',5760,118153),
+('IR','GIL','rudsar-118191','رودسر','Rudsar',47502,118191),
+('IR','GIL','rud-pish-118196','رود پیش','Rud Pish',2140,118196),
+('IR','THR','rudehen-118223','رودهن','Rudehen',28533,118223),
+('IR','GIL','rudboneh-118232','رودبنه','Rudboneh',3441,118232),
+('IR','GIL','rud-bardeh-118238','رود برده','Rud Bardeh',1120,118238),
+('IR','GIL','khalilabad-118244','خليل آباد','Khalilabad',10504,118244),
+('IR','QAZ','rudak-118260','رودک','Rudak',1270,118260),
+('IR','ISF','rezveh-118272','رزوه','Rezveh',4332,118272),
+('IR','MAZ','rostam-kola-118302','رستم كلا','Rostam Kola',11686,118302),
+('IR','BUS','bandar-e-rostami-118307','بندر رستمی','Bandar-e Rostami',1671,118307),
+('IR','GIL','rostamabad-118314','رستم آباد','Rostamabad',13746,118314),
+('IR','CHB','rostamabad-118319','رستم آباد','Rostamabad',1037,118319),
+('IR','KER','narmashir-118323','رستم آباد','Narmashir',0,118323),
+('IR','RKH','roshtkhvar-118328','رشتخوار','Roshtkhvar',7514,118328),
+('IR','YAZ','roknabad-118346','رکن آباد','Roknabad',2324,118346),
+('IR','THR','robat-karim-118367','رباط كريم','Robat Karim',105393,118367),
+('IR','BUS','riz-118452','ريز','Riz',3282,118452),
+('IR','GIL','rezvanshahr-118532','رضوانده','Rezvanshahr',19519,118532),
+('IR','QAZ','reshtaqun-118596','رشتقون','Reshtaqun',1608,118596),
+('IR','HAM','razini-118639','رزینی','Razini',3118,118639),
+('IR','FRS','razianeh-118643','رازیانه','Razianeh',1052,118643),
+('IR','ARD','razi-118653','رضی','Razi',1581,118653),
+('IR','HAM','razan-118681','رزن','Razan',14275,118681),
+('IR','KER','rayen-118696','راین','Rayen',10286,118696),
+('IR','KER','ravar-118704','راور','Ravar',40167,118704),
+('IR','KSH','ravansar-118705','روانسر','Ravansar',24527,118705),
+('IR','CHB','rastab-118728','راستاب','Rastab',1582,118728),
+('IR','GIL','rashtabad-118742','رشت آباد','Rashtabad',1628,118742),
+('IR','GIL','rasht-118743','رشت','Rasht',594590,118743),
+('IR','KHZ','ramshir-118805','خلف آباد','Ramshir',25009,118805),
+('IR','ISF','ramsheh-118806','رامشه','Ramsheh',3131,118806),
+('IR','GLS','ramian-118824','راميان','Ramian',0,118824),
+('IR','KHZ','ramhormoz-118826','رامهرمز','Ramhormoz',74285,118826),
+('IR','KER','rahimabad-118967','رحیم آباد','Rahimabad',3365,118967),
+('IR','BUS','rahdar-118975','راهدار','Rahdar',1574,118975),
+('IR','KER','rafsanjan-118994','رفسنجان','Rafsanjan',147680,118994),
+('IR','QAZ','radekan-119001','رادکان','Radekan',2306,119001),
+('IR','KER','rabor-119010','رابر','Rabor',13263,119010),
+('IR','WAZ','quruq-119044','قوروق','Quruq',1471,119044),
+('IR','ISF','qudejan-119102','قودجان','Qudejan',1472,119102),
+('IR','RKH','quchan-119115','قوچان','Quchan',111752,119115),
+('IR','FRS','qotbabad-119149','قطب آباد','Qotbabad',7476,119149),
+('IR','HAM','qorveh-ye-dargazin-119160','اروه در جزین','Qorveh-ye Dargazin',9540,119160),
+('IR','KRD','qorveh-119161','قروه','Qorveh',87953,119161),
+('IR','GLS','qoroq-119171','قرق','Qoroq',6701,119171),
+('IR','QOM','qom-119208','قم','Qom',900000,119208),
+('IR','FRS','qir-119264','قیر','Qir',20010,119264),
+('IR','EAZ','qey-araq-119353','قيصرق','Qey''araq',2155,119353),
+('IR','ZAN','qidar-119369','قيدَر','Qidar',34921,119369),
+('IR','HRZ','qeshm-119374','قشم','Qeshm',25000,119374),
+('IR','QAZ','qeshlaq-e-charkhlu-119422','قشلاق جرخلو','Qeshlaq-e Charkhlu',1360,119422),
+('IR','FRS','qeshlaq-119453','قشلاق','Qeshlaq',1072,119453),
+('IR','QAZ','qazvin-119505','قزوين','Qazvin',333635,119505),
+('IR','EAZ','qazi-jahan-119521','قاضی جهان','Qazi Jahan',3359,119521),
+('IR','GIL','qazian-bala-mahalleh-119524','غازیان','Qazian Bala Mahalleh',2836,119524),
+('IR','KSH','qazanchi-119537','فرانچی','Qazanchi',2755,119537),
+('IR','GLS','qanqarmeh-119560','قانقرمه','Qanqarmeh',2197,119560),
+('IR','HAM','qatar-qu-i-119574','قطار قوئی','Qatar Qu''i',1000,119574),
+('IR','KSH','qasr-e-shirin-119586','قصر شيرين','Qasr-e Shirin',18473,119586),
+('IR','GLS','qarnabad-119714','قرن آباد','Qarnabad',1961,119714),
+('IR','WAZ','qarah-zia-od-din-119730','قره ضیاء الدین','Qarah Zia'' od Din',26767,119730),
+('IR','NKH','qarah-mosalla-119803','قره مصلی','Qarah Mosalla',1311,119803),
+('IR','FRS','qal-eh-now-120199','قلعه نو','Qal''eh Now',1530,120199),
+('IR','THR','qods-120292','شهر قدس','Qods',309605,120292),
+('IR','KER','qal-eh-ganj-120323','قلعه گنج','Qal`eh Ganj',0,120323),
+('IR','HRZ','rudan-120351','بالا شَهر','Rudan',36121,120351),
+('IR','ISF','qal-eh-ye-nazer-120474','قلعه ناظر','Qal''eh-ye Nazer',1241,120474),
+('IR','KHZ','qal-eh-ye-khvajeh-120499','قلعه خواجه','Qal`eh-ye Khvajeh',0,120499),
+('IR','ILM','arkavaz-120539','ارکواز','Arkavaz',11977,120539),
+('IR','GIL','qal-eh-bin-120554','قلعه بین','Qal''eh Bin',1436,120554),
+('IR','SEM','dibaj-120577','دیباج','Dibaj',5647,120577),
+('IR','FRS','qalat-120618','قلات','Qalat',3953,120618),
+('IR','FRS','qalat-120620','شهرک قلات','Qalat',3959,120620),
+('IR','ISF','qahrizjan-120673','قهریز جان','Qahrizjan',1779,120673),
+('IR','CHB','farrokh-shahr-120678','فرّخ شهر','Farrokh Shahr',32391,120678),
+('IR','SKH','qa-en-120694','قائن','Qa''en',40157,120694),
+('IR','MAZ','qa-em-shahr-120695','قائم شهر','Qa''em Shahr',204953,120695),
+('IR','QAZ','qadimabad-120709','قدیم آباد','Qadimabad',1469,120709),
+('IR','FRS','qaderabad-120724','قادر آباد','Qaderabad',14973,120724),
+('IR','MAZ','pul-120814','پول','Pul',3150,120814),
+('IR','KHZ','posht-e-pian-120869','پشت پیان','Posht-e Pian',2325,120869),
+('IR','KSH','sarpol-e-zahab-120931','سر پل ذهاب','Sarpol-e Zahab',45481,120931),
+('IR','MAZ','pol-e-sefid-120936','پل سفيد','Pol-e Sefid',8294,120936),
+('IR','LOR','poldokhtar-120949','پل دختر','Poldokhtar',26352,120949),
+('IR','WAZ','poldasht-120954','اَرَپلَر','Poldasht',42170,120954),
+('IR','THR','pishva-120972','پيشوا','Pishva',53856,120972),
+('IR','GLS','pishkamar-120978','تِكچَ','Pishkamar',5777,120978),
+('IR','QAZ','pir-yusefian-120997','پير يوسِفيّان','Pir Yusefian',4071,120997),
+('IR','KER','telkheh-char-121000','تلخه چار','Telkheh Char',3000,121000),
+('IR','WAZ','pir-kandi-121048','پیر کندی','Pir Kandi',1220,121048),
+('IR','GIL','pir-bazar-121100','پیر بازار','Pir Bazar',5373,121100),
+('IR','CHB','pir-balut-121105','پير بلوط','Pir Balut',1916,121105),
+('IR','WAZ','piranshahr-121110','بیرانشهر','Piranshahr',168393,121110),
+('IR','KSH','paveh-121240','پاوه','Paveh',25771,121240),
+('IR','KBA','pataveh-121263','پاتاوه','Pataveh',2284,121263),
+('IR','FRS','paskhan-121289','پاسخن','Paskhan',1545,121289),
+('IR','ZAN','paskuhan-121290','پسکوهان','Paskuhan',1184,121290),
+('IR','ARD','parsabad-121380','فارس آباد','Parsabad',102996,121380),
+('IR','KER','pariz-121411','پاریز','Pariz',8005,121411),
+('IR','CHB','pardanjan-121457','پردنجان','Pardanjan',8699,121457),
+('IR','BUS','parak-121481','پرک','Parak',3582,121481),
+('IR','FRS','pa-qalat-121492','پاغلات','Pa Qalat',1007,121492),
+('IR','GLS','panj-peykar-121509','بَش وشتا','Panj Peykar',2528,121509),
+('IR','ALB','palangabad-121604','رحمانیه','Palangabad',1012,121604),
+('IR','BUS','pahlavan-koshi-121668','پهلوان کشی','Pahlavan Koshi',1296,121668),
+('IR','GIL','otaqvar-121774','اطاق ور','Otaqvar',1938,121774),
+('IR','MAZ','emamzadeh-abdollah-121780','اسكو محله','Emamzadeh ''Abdollah',5768,121780),
+('IR','EAZ','osku-121781','اسکو','Osku',18459,121781),
+('IR','WAZ','oshnaviyeh-121795','اشنويه','Oshnaviyeh',50661,121795),
+('IR','WAZ','orumiyeh-121801','أرومية','Orumiyeh',577307,121801),
+('IR','KHZ','am-altamir-121826','ام الطمیر','Am Altamir',5004,121826),
+('IR','HAM','ommatlar-121856','امتلر','Ommatlar',2126,121856),
+('IR','KHZ','omidiyeh-121861','امیدیه','Omidiyeh',67427,121861),
+('IR','ISF','nushabad-121890','نوش آباد','Nushabad',11838,121890),
+('IR','MRK','nur-ali-beyg-121904','نور علی بيگ','Nur ''Ali Beyg',1769,121904),
+('IR','FRS','nurabad-121925','نور آباد','Nurabad',57058,121925),
+('IR','FRS','nurabad-121929','نور آباد','Nurabad',1187,121929),
+('IR','KSH','nukan-121934','نوکان','Nukan',10377,121934),
+('IR','MAZ','nowzarabad-121950','نوذر آباد','Nowzarabad',1892,121950),
+('IR','KSH','nowsud-121955','نوسود','Nowsud',1949,121955),
+('IR','ARD','now-shahr-121958','نو شهر','Now Shahr',1695,121958),
+('IR','MAZ','nowshahr-121959','نوشهر','Nowshahr',40000,121959),
+('IR','FRS','nowruzan-121966','نوروزان','Nowruzan',2607,121966),
+('IR','GLS','now-kandeh-121993','نو كنده','Now Kandeh',6650,121993),
+('IR','FRS','nowjeyn-121999','نوجین','Nowjeyn',3769,121999),
+('IR','EAZ','nowjeh-deh-e-sadat-122003','نوجه ده سادات','Nowjeh Deh-e Sadat',1527,122003),
+('IR','QOM','kahak-122026','كهک','Kahak',4837,122026),
+('IR','MRK','nowbaran-122071','نوبران','Nowbaran',3334,122071),
+('IR','SBL','nosratabad-122111','Noşratābād','Nosratabad',4182,122111),
+('IR','GIL','noqreh-deh-122123','نقره ده','Noqreh Deh',1162,122123),
+('IR','MRK','nimvar-122183','نيم ور','Nimvar',7507,122183),
+('IR','THR','niknamdeh-122213','نيكنامده','Niknamdeh',3441,122213),
+('IR','ISF','neyasar-122232','نیاسر','Neyasar',2319,122232),
+('IR','ARD','niaraq-122234','نيارق','Niaraq',1873,122234),
+('IR','QAZ','nezamabad-122255','نظام آباد','Nezamabad',3857,122255),
+('IR','FRS','nezamabad-122260','نظام آباد','Nezamabad',1275,122260),
+('IR','QOM','ney-zar-122275','نيزار','Ney Zar',296,122275),
+('IR','RKH','neyshabur-122285','نيسابور','Neyshabur',220929,122285),
+('IR','FRS','neyriz-122289','نیریز','Neyriz',45506,122289),
+('IR','KRD','ney-122319','نی','Ney',2691,122319),
+('IR','ISF','neshlaj-122324','نشلج','Neshlaj',3024,122324),
+('IR','QAZ','narjeh-122369','نرجه','Narjeh',5604,122369),
+('IR','RKH','neqab-122375','نقاب','Neqab',14783,122375),
+('IR','MAZ','neka-122397','نارَنج باغ','Neka',60991,122397),
+('IR','EAZ','nazarlu-122428','نادِر عَلی','Nazarlu',3773,122428),
+('IR','BUS','nazar-aqa-122436','نظر آقا','Nazar Aqa',2649,122436),
+('IR','ALB','nazarabad-122438','نظر آباد','Nazarabad',213388,122438),
+('IR','HAM','navar-122481','نوار','Navar',1574,122481),
+('IR','ISF','natanz-122491','نطنز','Natanz',43977,122491),
+('IR','RKH','nasrabad-122513','نصر آباد','Nasrabad',1739,122513),
+('IR','ISF','sefidshahr-122515','سفيدشهر','Sefidshahr',5804,122515),
+('IR','THR','nasirshahr-122544','نصیر آباد','Nasirshahr',28644,122544),
+('IR','MAZ','nashtarud-122560','نشتارود','Nashtarud',5837,122560),
+('IR','BUS','anarestan-122653','انارستان','Anarestan',3400,122653),
+('IR','MRK','naraq-122667','نراق','Naraq',2592,122667),
+('IR','CHB','naqneh-122687','نقنه','Naqneh',9923,122687),
+('IR','WAZ','naqadeh-122698','نقده','Naqadeh',81598,122698),
+('IR','EAZ','namrur-122713','نمرور','Namrur',1424,122713),
+('IR','ARD','namin-122721','نمين','Namin',13659,122721),
+('IR','HAM','namileh-122722','ناملِه','Namileh',2998,122722),
+('IR','WAZ','nalivan-122776','نلیوان','Nalivan',1186,122776),
+('IR','BUS','nakhl-e-taqi-122787','نخل تقی','Nakhl-e Taqi',18837,122787),
+('IR','HRZ','nakhl-e-ebrahimi-122794','نخل ابراهيمی','Nakhl-e Ebrahimi',2094,122794),
+('IR','NKH','najaf-122829','نجف','Najaf',1279,122829),
+('IR','KBA','mahalleh-ye-najafabad-122860','محله نجف آباد','Mahalleh-ye Najafabad',10742,122860),
+('IR','KER','najafshahr-122864','نجف آباد','Najafshahr',20164,122864),
+('IR','ISF','na-in-122869','نائین','Na''in',27379,122869),
+('IR','MRK','nahr-e-mian-122881','نهر میان','Nahr-e Mian',1634,122881),
+('IR','QAZ','khoramdasht-122914','خرمدشت','Khoramdasht',6554,122914),
+('IR','HAM','nahavand-122915','نهاوند','Nahavand',76250,122915),
+('IR','EAZ','nahand-122919','نهند','Nahand',1061,122919),
+('IR','CHB','naghan-e-sofla-122925','ناغان سفلى','Naghan-e Sofla',1792,122925),
+('IR','CHB','nafech-122939','نافچ','Nafech',4059,122939),
+('IR','KHZ','naddafiyeh-122959','ندافیه','Naddafiyeh',2429,122959),
+('IR','ISF','musaabad-122989','موسی آباد','Musaabad',5437,122989),
+('IR','MAZ','musaabad-123014','موسى آباد','Musaabad',1817,123014),
+('IR','ILM','murmuri-123036','مورموری','Murmuri',3768,123036),
+('IR','KRD','muchesh-123106','موچش','Muchesh',3370,123106),
+('IR','SKH','mud-123117','مود','Mud',3477,123117),
+('IR','KHZ','mozaffariyeh-ye-yek-123129','مظفریه یک','Mozaffariyeh-ye Yek',1005,123129),
+('IR','FRS','mozaffarabad-123138','مظفر آباد','Mozaffarabad',1097,123138),
+('IR','MAZ','salmanshahr-123179','سلمان شهر','Salmanshahr',9656,123179),
+('IR','CHB','mostafaabad-123195','مصطفى آباد','Mostafaabad',2379,123195),
+('IR','KHZ','moshrageh-123203','مشارگه','Moshrageh',2095,123203),
+('IR','THR','meshkin-dasht-123205','مشکین آباد','Meshkin Dasht',62005,123205),
+('IR','FRS','moshkan-123215','مشکان','Moshkan',1063,123215),
+('IR','FRS','morghan-123266','مرغان','Morghan',5660,123266),
+('IR','GLS','maraveh-tappeh-123295','مراوه تپه','Maraveh Tappeh',0,123295),
+('IR','KHZ','mollasani-123389','رامین','Mollasani',0,123389),
+('IR','NKH','molla-hasan-123405','ملا حسن','Molla Hasan',1734,123405),
+('IR','FRS','mohr-123485','شهرستان مُهر','Mohr',7784,123485),
+('IR','KER','mohiabad-123490','محی آباد','Mohiabad',3930,123490),
+('IR','WAZ','mohammad-yar-123494','محمد یار','Mohammad Yar',9313,123494),
+('IR','BUS','mohammad-salehi-123500','محمّد صالحی','Mohammad Salehi',1515,123500),
+('IR','KER','mohammadabad-123674','محمد آباد','Mohammadabad',0,123674),
+('IR','ISF','mobarakeh-ye-karvan-123735','مبارکه','Mobarakeh-ye Karvan',1504,123735),
+('IR','YAZ','mobarakeh-123738','مبارکه','Mobarakeh',3301,123738),
+('IR','EAZ','mobarakabad-123752','مبارک آباد','Mobarakabad',4456,123752),
+('IR','GLS','minudasht-123927','مينودشت','Minudasht',30085,123927),
+('IR','HRZ','minab-123941','ميناب','Minab',97986,123941),
+('IR','ARD','minabad-123942','مين آباد','Minabad',1139,123942),
+('IR','MRK','milajerd-123986','میلاجرد','Milajerd',9288,123986),
+('IR','EAZ','mianeh-124082','میانه','Mianeh',106291,124082),
+('IR','WAZ','miandoab-124085','قوشاچای','Miandoab',134425,124085),
+('IR','FRS','miyanshahr-124094','اسلام آباد','Miyanshahr',5912,124094),
+('IR','SKH','nimbeluk-124099','اسلام آباد','Nimbeluk',4762,124099),
+('IR','ISF','miandasht-124101','بوئین و میاندشت','Miandasht',0,124101),
+('IR','FRS','meymand-124146','میمند','Meymand',10120,124146),
+('IR','YAZ','meybod-124193','ميبد','Meybod',51874,124193),
+('IR','ARD','meshgin-shahr-124210','مشگين شهر','Meshgin Shahr',74109,124210),
+('IR','YAZ','mahriz-124274','مهريز','Mahriz',34237,124274),
+('IR','ILM','mehran-124291','مهران','Mehran',11831,124291),
+('IR','EAZ','mehraban-124298','مهربان','Mehraban',12937,124298),
+('IR','MAZ','mehdi-rajeh-124338','مهدی رجه','Mehdi Rajeh',1954,124338),
+('IR','QAZ','mehdiabad-124347','مهدی آباد','Mehdiabad',1494,124347),
+('IR','RKH','mazinan-124491','مزینان','Mazinan',1661,124491),
+('IR','FRS','mazayjan-124517','مزایجان','Mazayjan',2655,124517),
+('IR','CHB','mavarz-124569','مورز','Mavarz',1201,124569),
+('IR','MRK','mast-e-sofla-124597','مست سفلى','Mast-e Sofla',2128,124597),
+('IR','HAM','masjed-e-olya-124619','مسجد علیا','Masjed-e ''Olya',1873,124619),
+('IR','KHZ','masjed-soleyman-124620','مسجد سلیمان','Masjed Soleyman',100497,124620),
+('IR','FRS','masiri-124622','مصیری','Masiri',0,124622),
+('IR','FRS','mashtan-124637','مشتان','Mashtan',3093,124637),
+('IR','KER','bardsir-124647','بردسیر','Bardsir',25152,124647),
+('IR','MRK','mashhad-e-elkubeh-124662','مشهد الکوبه','Mashhad-e Elkubeh',1386,124662),
+('IR','RKH','mashhad-124665','سناباد','Mashhad',2307177,124665),
+('IR','ISF','mashkat-124667','مشكات','Mashkat',5357,124667),
+('IR','HRZ','mesen-124690','مسن','Mesen',2162,124690),
+('IR','MRK','marzijaran-124698','مرزیجران','Marzijaran',4143,124698),
+('IR','MAZ','marzanabad-124709','مرزن آباد','Marzanabad',6698,124709),
+('IR','HAM','maryanaj-124715','مریانج','Maryanaj',10848,124715),
+('IR','FRS','marvdasht-124721','مرودشت','Marvdasht',148858,124721),
+('IR','YAZ','marvast-124724','مروست','Marvast',9379,124724),
+('IR','CHB','markdeh-124767','مارکده','Markdeh',1601,124767),
+('IR','KBA','margown-124771','مارجان','Margown',3135,124771),
+('IR','GIL','marjaghal-124775','تولم شهر','Marjaghal',6735,124775),
+('IR','KRD','marivan-124778','دِژ شاهپور','Marivan',136654,124778),
+('IR','THR','mahdasht-124838','ماهدشت','Mahdasht',62910,124838),
+('IR','EAZ','marand-124862','مرند','Marand',124191,124862),
+('IR','FRS','efzar-124863','افزر','Efzar',2657,124863),
+('IR','EAZ','maragheh-124877','مراغه','Maragheh',262604,124877),
+('IR','RKH','maragheh-124878','مراغه','Maragheh',262604,124878),
+('IR','KRD','marab-124885','مارا','Marab',1185,124885),
+('IR','KER','manujan-124914','جاریان','Manujan',15634,124914),
+('IR','KHZ','mansuriyeh-124925','منصوریه','Mansuriyeh',5441,124925),
+('IR','FRS','mansurabad-124956','منصور آباد','Mansurabad',2412,124956),
+('IR','THR','manjilabad-124966','منجيل آباد','Manjilabad',2648,124966),
+('IR','GIL','manjil-124967','منجیل','Manjil',15630,124967),
+('IR','SBL','mand-e-bala-125000','مند بالا','Mand-e Bala',1119,125000),
+('IR','LOR','ma-mulan-125016','مامولون','Ma''mulan',7656,125016),
+('IR','EAZ','mamqan-125035','ماماگان','Mamqan',11892,125035),
+('IR','CHB','mal-khalifeh-125077','دِه خَلیفَ','Mal Khalifeh',4024,125077),
+('IR','WAZ','malhazan-125087','ماتازان','Malhazan',393,125087),
+('IR','EAZ','malekan-125112','ملکان','Malekan',27431,125112),
+('IR','BUS','mal-e-khalifeh-125126','خَليفِه','Mal-e Khalifeh',2463,125126),
+('IR','RKH','malekabad-125140','ملک آباد','Malekabad',1569,125140),
+('IR','MRK','malekabad-125142','مالک آباد','Malekabad',2536,125142),
+('IR','HAM','malayer-125185','ملایر','Malayer',170237,125185),
+('IR','THR','malard-125188','ملارد','Malard',56745,125188),
+('IR','WAZ','maku-125205','makۆ','Maku',46581,125205),
+('IR','BUS','maku-125206','ماهکوه','Maku',46581,125206),
+('IR','MAZ','makran-125227','ماكران','Makran',1498,125227),
+('IR','YAZ','rezvanshahr-125236','رضوانشهر','Rezvanshahr',3606,125236),
+('IR','ZAN','mahneshan-125290','ماه نشان','Mahneshan',5487,125290),
+('IR','MAZ','mahmudabad-125328','محمود آباد','Mahmudabad',31844,125328),
+('IR','QAZ','mahmudabad-nemuneh-125330','محمود آباد نمونه','Mahmudabad Nemuneh',21982,125330),
+('IR','FRS','bahmanabad-125393','بهمن آباد','Bahmanabad',2112,125393),
+('IR','KER','mahan-125427','ماهان','Mahan',19423,125427),
+('IR','MRK','mahallat-125438','محلات','Mahallat',43245,125438),
+('IR','HAM','mohajeran-125443','مهاجران','Mohajeran',7331,125443),
+('IR','WAZ','mahabad-125446','مهاباد','Mahabad',168393,125446),
+('IR','KBA','madavan-125489','جُوهَوِی','Madavan',18078,125489),
+('IR','FRS','madar-soleyman-125511','مادر سلیمان','Madar Soleyman',1546,125511),
+('IR','QAZ','lushkan-125556','لوشکان','Lushkan',3028,125556),
+('IR','GIL','lowshan-125585','لوشان','Lowshan',13032,125585),
+('IR','RKH','lotfabad-125599','لطف آباد','Lotfabad',1865,125599),
+('IR','CHB','lordegan-125609','لردگان','Lordegan',40528,125609),
+('IR','EAZ','livar-e-bala-125646','ليوار','Livar-e Bala',1178,125646),
+('IR','KBA','likak-125688','ليکک','Likak',19857,125688),
+('IR','EAZ','leylan-125710','لیلان','Leylan',6356,125710),
+('IR','KBA','landeh-125726','لنده','Landeh',12772,125726),
+('IR','THR','lazur-125741','لزور','Lazur',1288,125741),
+('IR','HRZ','laz-125744','لازه','Laz',1101,125744),
+('IR','GIL','lavandevil-125790','لوندویل','Lavandevil',11235,125790),
+('IR','FRS','latifi-125798','لطیفی','Latifi',7300,125798),
+('IR','HAM','lesga-125805','لثگاء','Lesga''',1973,125805),
+('IR','SEM','lasjerd-125820','لاسجرد','Lasjerd',1024,125820),
+('IR','GIL','lasht-e-nesha-125826','لشت نشا','Lasht-e Nesha',10539,125826),
+('IR','ALB','lashkarabad-125834','لشگر آباد','Lashkarabad',7198,125834),
+('IR','MAZ','larim-125853','لاريم','Larim',5300,125853),
+('IR','FRS','lar-125877','شهر قدیم لار','Lar',62045,125877),
+('IR','FRS','lapu-i-125881','لپوئی','Lapu''i',8985,125881),
+('IR','GIL','langarud-125897','لنگرود','Langarud',68148,125897),
+('IR','KER','langar-125906','لنگر','Langar',1818,125906),
+('IR','FRS','lamerd-125926','لامرد','Lamerd',29380,125926),
+('IR','KHZ','lali-125938','دشت لالی','Lali',18473,125938),
+('IR','KER','lalehzar-125945','لاله زار','Lalehzar',4429,125945),
+('IR','THR','lalan-125958','لالان','Lalan',1135,125958),
+('IR','WAZ','lalaklu-125960','للک لو','Lalaklu',1640,125960),
+('IR','HAM','lalejin-125961','لالجین','Lalejin',14916,125961),
+('IR','EAZ','laklar-125972','لکلر','Laklar',4767,125972),
+('IR','GIL','lahijan-126015','لاهیجان','Lahijan',101073,126015),
+('IR','HRZ','bandar-e-laft-126035','بندرِ لافت','Bandar-e Laft',4668,126035),
+('IR','EAZ','kuzeh-kanan-126056','كوزِه كَنان','Kuzeh Kanan',4730,126056),
+('IR','KHZ','safiabad-126069','شهرک دکتر علی شریعتی','Safiabad',9879,126069),
+('IR','KHZ','kut-e-abdollah-126082','کوت عبدالله','Kut-e ''Abdollah',56252,126082),
+('IR','HRZ','kushk-e-nar-126089','كشكنار','Kushk-e Nar',3260,126089),
+('IR','FRS','ramjerd-126148','رامجرد','Ramjerd',2550,126148),
+('IR','FRS','kurdeh-126227','کورده','Kurdeh',3595,126227),
+('IR','SBL','kotij-126258','کتیج','Kotij',3016,126258),
+('IR','GIL','kumeleh-126267','کومله','Kumeleh',6457,126267),
+('IR','ARD','kujanaq-126314','کوجنق','Kujanaq',1920,126314),
+('IR','QAZ','kuhin-126351','كوهين','Kuhin',1411,126351),
+('IR','HRZ','kuhestak-126362','كوهستک','Kuhestak',3060,126362),
+('IR','FRS','kuhanjan-126382','کوهنجان','Kuhanjan',3281,126382),
+('IR','LOR','kuhdasht-126409','کوهدشت','Kuhdasht',89091,126409),
+('IR','KER','kuhbanan-126411','کوهبنان','Kuhbanan',10761,126411),
+('IR','FRS','kudian-126430','کودیان','Kudian',1005,126430),
+('IR','GIL','kuchesfahan-126435','کوچصفهان','Kuchesfahan',10026,126435),
+('IR','EAZ','koshksaray-126501','كوشك سَرای','Koshksaray',12250,126501),
+('IR','KHZ','koreyt-e-borumi-126553','کریت برومی','Koreyt-e Borumi',1622,126553),
+('IR','GLS','kord-kuy-126572','كردكوی','Kord Kuy',39881,126572),
+('IR','EAZ','kord-kandi-126578','کرد کندی','Kord Kandi',4439,126578),
+('IR','MAZ','kordichal-126580','كدی چال','Kordichal',1566,126580),
+('IR','ALB','kordan-126600','كردان','Kordan',3795,126600),
+('IR','SEM','korang-126613','كرنگ','Korang',1094,126613),
+('IR','GIL','kapur-chal-126628','کپور چال','Kapur Chal',1542,126628),
+('IR','ISF','golshahr-126640','کنجدجان','Golshahr',9904,126640),
+('IR','QAZ','kondor-126654','کندر','Kondor',1383,126654),
+('IR','RKH','kondor-126656','کندر','Kondor',6460,126656),
+('IR','HRZ','sardang-e-komiz-126712','سردنگ كميز','Sardang-e Komiz',1383,126712),
+('IR','MRK','komijan-126715','كميجان','Komijan',7358,126715),
+('IR','ISF','kommeh-126720','بخش کمّه','Kommeh',2184,126720),
+('IR','EAZ','kolvanaq-126734','کلوانق','Kolvanaq',7465,126734),
+('IR','ARD','kolur-126743','شاهرود','Kolur',2347,126743),
+('IR','GIL','kolka-sara-126771','کلکا سرا','Kolka Sara',1118,126771),
+('IR','SEM','kohanabad-126884','كهن آباد','Kohanabad',1192,126884),
+('IR','HRZ','kish-126914','كيش','Kish',39853,126914),
+('IR','THR','kilan-126942','كيلان','Kilan',2882,126942),
+('IR','GIL','kiashahr-126952','بندر کیاشهر','Kiashahr',14022,126952),
+('IR','FRS','kianabad-126959','کیان آباد','Kianabad',5039,126959),
+('IR','MAZ','kia-kola-126962','كيا كلا','Kia Kola',8040,126962),
+('IR','WAZ','khuy-126972','خوی','Khuy',198845,126972),
+('IR','CHB','khowy-126973','خوی','Khowy',2772,126973),
+('IR','BUS','khurmuj-127014','خورموج','Khurmuj',40722,127014),
+('IR','ISF','khur-127029','خور','Khur',6765,127029),
+('IR','ISF','khansar-127033','خوانسار','Khansar',21883,127033),
+('IR','GIL','khvachekin-127046','خاجکین','Khvachekin',1216,127046),
+('IR','GLS','khajeh-nafas-127051','خاجِه نَفَس','Khajeh Nafas',5129,127051),
+('IR','FRS','khuzi-127081','خوزی','Khuzi',3245,127081),
+('IR','SKH','khusf-127098','خوسف','Khusf',5716,127098),
+('IR','THR','khurin-127109','خورين','Khurin',7223,127109),
+('IR','ALB','khur-127127','خور','Khur',4409,127127),
+('IR','FRS','khur-127131','خور','Khur',7338,127131),
+('IR','ISF','khundab-127160','خونداب','Khundab',1652,127160),
+('IR','FRS','khumeh-zar-127166','بنه خومه زار','Khumeh Zar',6220,127166),
+('IR','ISF','khozaq-127186','خزاق','Khozaq',1326,127186),
+('IR','ARD','khujin-127211','خوجین','Khujin',2633,127211),
+('IR','FRS','khosuyeh-127215','خسویه','Khosuyeh',2856,127215),
+('IR','FRS','khosrow-shirin-127217','خسرو شیرین','Khosrow Shirin',1969,127217),
+('IR','EAZ','khosrowshahr-127219','خسرو شهر','Khosrowshahr',21972,127219),
+('IR','KHZ','shahr-e-emam-127243','شهر امام خمینی','Shahr-e Emam',11393,127243),
+('IR','MRK','khoshkrud-127269','خشكرود','Khoshkrud',5246,127269),
+('IR','GIL','khoshk-estalkh-127279','خشک اسطلخ','Khoshk Estalkh',1072,127279),
+('IR','GIL','khoshk-bijar-127289','خشکبیجار','Khoshk Bijar',7245,127289),
+('IR','KHZ','khorramshahr-127319','الخرمشهر','Khorramshahr',330606,127319),
+('IR','MAZ','khorramabad-127342','خرم آباد','Khorramabad',11542,127342),
+('IR','LOR','khorramabad-127349','خرم آباد','Khorramabad',329825,127349),
+('IR','FRS','khonj-127382','خنج','Khonj',19217,127382),
+('IR','FRS','khonjesht-127384','خنجشت','Khonjesht',2487,127384),
+('IR','MRK','khondab-127389','خانداب','Khondab',7810,127389),
+('IR','MRK','khomeyn-127403','خمين','Khomeyn',77425,127403),
+('IR','EAZ','khomarlu-127409','خمارلو','Khomarlu',1902,127409),
+('IR','GIL','khomam-127415','خمام','Khomam',20897,127415),
+('IR','EAZ','khezerlu-127466','خضرلو','Khezerlu',3505,127466),
+('IR','MAZ','kheyr-rud-kenar-127488','خیر رود کنار','Kheyr Rud Kenar',1996,127488),
+('IR','MRK','kheyrabad-127531','خير آباد','Kheyrabad',2280,127531),
+('IR','MAZ','khesht-sar-127585','خشت سر','Khesht Sar',2656,127585),
+('IR','FRS','khasht-127593','خشت','Khasht',9599,127593),
+('IR','FRS','kherameh-127613','خرامه','Kherameh',0,127613),
+('IR','KHZ','khovis-127651','خویس','Khovis',3520,127651),
+('IR','THR','khaveh-127653','خاوه','Khaveh',1012,127653),
+('IR','KER','khatunabad-127668','خاتون آباد','Khatunabad',5471,127668),
+('IR','GIL','pardeh-gusheh-127758','خرجگیل بالا','Pardeh Gusheh',2801,127758),
+('IR','CHB','kharaji-127833','خراجی','Kharaji',2880,127833),
+('IR','HRZ','kharaji-127834','خراجی','Kharaji',4712,127834),
+('IR','NKH','khan-laq-127855','خان لق','Khan Laq',6518,127855),
+('IR','SKH','khankuk-127858','خانلوک','Khankuk',1099,127858),
+('IR','FRS','khaniman-127882','خانیمن','Khaniman',3020,127882),
+('IR','EAZ','khanian-127886','خانيّان','Khanian',1014,127886),
+('IR','FRS','khaneh-zenyan-127917','خانه زنیان','Khaneh Zenyan',4027,127917),
+('IR','ZAN','khondab-127949','خنداب','Khondab',1646,127949),
+('IR','GLS','khan-bebin-127955','خان ببین','Khan Bebin',10878,127955),
+('IR','EAZ','khaneqah-127960','خانقاه','Khaneqah',1060,127960),
+('IR','HRZ','bandar-e-khamir-127992','بندر خمير','Bandar-e Khamir',15320,127992),
+('IR','ISF','barf-anbar-127995','برف انبار','Barf Anbar',5382,127995),
+('IR','KRD','khamesan-127996','خامسان','Khamesan',1405,127996),
+('IR','ARD','khalkhal-128008','خلخال','Khalkhal',51024,128008),
+('IR','RKH','khalilabad-128025','خلیل آباد','Khalilabad',12751,128025),
+('IR','ISF','khaledabad-128081','خالد آباد','Khaledabad',3023,128081),
+('IR','KHZ','khalaf-e-mosallam-128103','جوی','Khalaf-e Mosallam',1999,128103),
+('IR','HAM','khakriz-128112','خاکریز','Khakriz',1253,128112),
+('IR','ISF','khafr-128135','خفر','Khafr',1034,128135),
+('IR','KSH','kermanshah-128226','استان کرمانشاه','Kermanshah',621100,128226),
+('IR','KER','kerman-128234','كرمان','Kerman',577514,128234),
+('IR','NKH','kerik-128241','کریک','Kerik',1122,128241),
+('IR','KSH','kerend-e-gharb-128252','کرند غرب','Kerend-e Gharb',0,128252),
+('IR','FRS','kelestan-128299','کلستان','Kelestan',1673,128299),
+('IR','MRK','kazzaz-e-bala-128315','كزاز','Kazzaz-e Bala',1908,128315),
+('IR','FRS','kazerun-128321','كازرون','Kazerun',112360,128321),
+('IR','KER','kazemabad-128338','کاظم آباد','Kazemabad',4060,128338),
+('IR','GLS','simin-shahr-128392','سيمين شهر','Simin Shahr',17205,128392),
+('IR','MAZ','katra-128394','كترا','Katra',1832,128394),
+('IR','FRS','kateh-gonbad-128404','کته گنبد','Kateh Gonbad',1086,128404),
+('IR','RKH','kasrineh-128424','کسرینه','Kasrineh',2105,128424),
+('IR','RKH','kashmar-128447','کاشمر','Kashmar',131517,128447),
+('IR','WAZ','keshavarz-128469','کشاور','Keshavarz',4138,128469),
+('IR','ISF','kashan-128476','كاشان','Kashan',304487,128476),
+('IR','MRK','karkan-128566','قَرِه خان','Karkan',1437,128566),
+('IR','RKH','karizak-e-nagahani-128582','کاریزک ناگهانی','Karizak-e Nagahani',2920,128582),
+('IR','HAM','karimabad-128612','كَريم آباد','Karimabad',1452,128612),
+('IR','HRZ','karian-128653','كريان','Karian',5000,128653),
+('IR','EAZ','karkaj-128665','كرغج','Karkaj',8496,128665),
+('IR','HRZ','kardar-128697','كردر','Kardar',1592,128697),
+('IR','MRK','karchan-128703','خَرشان','Karchan',3743,128703),
+('IR','ALB','karaj-128747','قَصَبِهِ كَرَج','Karaj',1448075,128747),
+('IR','MRK','karahrud-128748','کرهرود','Karahrud',29721,128748),
+('IR','CHB','karf-e-olya-128752','كَرفِ بالا','Karf-e ''Olya',1198,128752),
+('IR','KSH','kangavar-128831','کنگاور','Kangavar',51352,128831),
+('IR','BUS','bandar-e-kangan-128847','بندرِ كنگان','Bandar-e Kangan',60187,128847),
+('IR','HAM','kandor-128858','قَلعِۀ كُندُر','Kandor',1289,128858),
+('IR','MAZ','kandolus-128862','کندلوس','Kandolus',1092,128862),
+('IR','RKH','kenevist-128890','کنویس','Kenevist',3695,128890),
+('IR','CHB','konarak-e-olya-128898','كُنرُك بالا','Konarak-e ''Olya',1058,128898),
+('IR','KRD','kamyaran-128905','کامیاران','Kamyaran',57077,128905),
+('IR','FRS','kamali-129054','کمالی','Kamali',1312,129054),
+('IR','QAZ','kamalabad-129062','كمال آباد','Kamalabad',2802,129062),
+('IR','BUS','kalameh-129124','كلمه','Kalameh',2463,129124),
+('IR','EAZ','kaleybar-129201','کليبر','Kaleybar',0,129201),
+('IR','MAZ','kelarabad-129479','کلار آباد','Kelarabad',6267,129479),
+('IR','GLS','kalaleh-129512','كلاله','Kalaleh',33700,129512),
+('IR','GIL','kala-chay-129543','کلا چای','Kala Chay',12379,129543),
+('IR','BUS','kaki-129569','كاكی','Kaki',12119,129569),
+('IR','RKH','kakhk-129574','کاخک','Kakhk',4625,129574),
+('IR','EAZ','kujuvar-129610','کوجووار','Kujuvar',6001,129610),
+('IR','CHB','kaj-129618','كاج','Kaj',4227,129618),
+('IR','THR','kahrizak-129664','كهريزك','Kahrizak',37527,129664),
+('IR','ALB','kahrizak-129666','کهريزک','Kahrizak',1072,129666),
+('IR','FRS','kaftarak-129811','کفترک','Kaftarak',1732,129811),
+('IR','FRS','kafri-129819','کفری','Kafri',1636,129819),
+('IR','HAM','kafrash-129821','کفراج','Kafrash',1670,129821),
+('IR','EAZ','mahalleh-ye-kafi-ol-malek-129826','كافی المُلك','Mahalleh-ye Kafi ol Malek',1251,129826),
+('IR','HAM','kabudarahang-129904','کبودر آهنگ','Kabudarahang',19216,129904),
+('IR','ILM','eyvan-129929','ايوان','Eyvan',31299,129929),
+('IR','FRS','juyom-129931','جویم','Juyom',8010,129931),
+('IR','MAZ','juybar-129933','جويبار','Juybar',32924,129933),
+('IR','HAM','juraqan-129945','جورقان','Juraqan',9234,129945),
+('IR','ZAN','juqin-129950','جوقین','Juqin',3129,129950),
+('IR','CHB','junqan-129956','جونقان','Junqan',14433,129956),
+('IR','FRS','jowkan-130009','جوکان','Jowkan',365,130009),
+('IR','ISF','jusheqan-e-estark-130013','جوشقان استرک','Jusheqan-e Estark',2035,130013),
+('IR','HAM','jowkar-130029','جوکار','Jowkar',2258,130029),
+('IR','HRZ','jenah-130069','جناح','Jenah',6910,130069),
+('IR','EAZ','julfa-130081','جلفا','Julfa',8810,130081),
+('IR','RKH','joghtay-130091','جغتای','Joghtay',0,130091),
+('IR','GIL','jirandeh-130116','جیرنده','Jirandeh',2320,130116),
+('IR','FRS','jian-130141','جیان','Jian',1905,130141),
+('IR','FRS','jereh-130165','جره','Jereh',1589,130165),
+('IR','BUS','khark-130216','جَزيرِۀ خارك','Khark',8193,130216),
+('IR','FRS','jezzeh-130223','جزه','Jezzeh',1620,130223),
+('IR','SEM','jazan-130226','جزن','Jazan',1818,130226),
+('IR','MRK','javarsian-130242','جاوَرسيان','Javarsian',4993,130242),
+('IR','CHB','javanmardi-130246','جوانمردی','Javanmardi',2385,130246),
+('IR','THR','javadiyeh-130265','جواد آباد','Javadiyeh',4844,130265),
+('IR','BUS','jetut-130268','جتوط','Jetut',1143,130268),
+('IR','KHZ','jateh-130269','جاته','Jateh',1227,130269),
+('IR','HRZ','jask-e-kohneh-130271','جاسک كهنه','Jask-e Kohneh',1202,130271),
+('IR','HRZ','jask-130276','بندرِ جاسک','Jask',16680,130276),
+('IR','EAZ','janqur-130327','جانقور','Janqur',2221,130327),
+('IR','KHZ','jongiyeh-130366','Jongīyeh','Jongiyeh',4183,130366),
+('IR','MAZ','jam-khaneh-130399','جام خانه','Jam Khaneh',5173,130399),
+('IR','QOM','jamkaran-130406','جمكران','Jamkaran',8368,130406),
+('IR','BUS','jam-130451','جامِ جَم','Jam',31436,130451),
+('IR','KHZ','jannat-makan-130452','جنت مكان','Jannat Makan',5360,130452),
+('IR','MRK','jalayer-130479','جلایر','Jalayer',1359,130479),
+('IR','NKH','jajarm-130524','جاجرم','Jajarm',19580,130524),
+('IR','BUS','ja-inak-130527','جائِنَك','Ja''inak',2387,130527),
+('IR','FRS','jahrom-130531','جهرم','Jahrom',141634,130531),
+('IR','FRS','jadval-e-torki-130668','جدول ترکی','Jadval-e Torki',1471,130668),
+('IR','RKH','jabuz-130677','جابوز','Jabuz',3639,130677),
+('IR','THR','jaban-130690','جابان','Jaban',2500,130690),
+('IR','KHZ','izeh-130697','ایذه','Izeh',119399,130697),
+('IR','FRS','izad-khvast-130702','ایزد خواست','Izad Khvast',5910,130702),
+('IR','EAZ','ivand-130718','ایوند','Ivand',1043,130718),
+('IR','ARD','iranabad-130757','ايران آباد','Iranabad',2051,130757),
+('IR','NKH','iraj-130760','ایرج','Iraj',1421,130760),
+('IR','ILM','ilam-130802','اِلام','Ilam',140940,130802),
+('IR','ZAN','ich-130807','ایج','Ich',2086,130807),
+('IR','FRS','ij-130809','ایج','Ij',6246,130809),
+('IR','HAM','idahlu-130819','ايدلو','Idahlu',1580,130819),
+('IR','KHZ','hoveyzeh-130821','هویزه','Hoveyzeh',19481,130821),
+('IR','KER','hutak-130825','هوتک','Hutak',3415,130825),
+('IR','CHB','hureh-130852','هوره','Hureh',2548,130852),
+('IR','NKH','hoseynabad-131034','حسین آباد','Hoseynabad',2909,131034),
+('IR','HAM','hoseynabad-e-latka-131061','حسین آباد','Hoseynabad-e Latka',805,131061),
+('IR','HRZ','hormoz-131231','قَلعِۀ هُرمُز','Hormoz',5891,131231),
+('IR','HRZ','halor-131272','هلر','Halor',5828,131272),
+('IR','ALB','hiv-131314','هيو','Hiv',8697,131314),
+('IR','ZAN','hidaj-131343','هيدج','Hidaj',13840,131343),
+('IR','ZAN','hey-131428','حی','Hey',1318,131428),
+('IR','ARD','hashatjin-131441','هشتجین','Hashatjin',5725,131441),
+('IR','QAZ','hesar-kharvan-131454','حصار خروان','Hesar Kharvan',3949,131454),
+('IR','HAM','hesamabad-131511','حسام آباد','Hesamabad',2045,131511),
+('IR','EAZ','heris-131528','هريس','Heris',10515,131528),
+('IR','FRS','beyza-131536','هرابال','Beyza',7252,131536),
+('IR','MRK','hendudar-131551','هندودر','Hendudar',1918,131551),
+('IR','KHZ','hendijan-131559','هندیجان','Hendijan',29015,131559),
+('IR','RKH','hemmatabad-131574','همت آباد','Hemmatabad',1274,131574),
+('IR','BUS','halpah-i-131596','هلپه ای','Halpah''i',1427,131596),
+('IR','MAZ','hachirud-131621','هچیرود','Hachirud',10398,131621),
+('IR','ALB','hashtgerd-131691','هشتگرد','Hashtgerd',55640,131691),
+('IR','KHZ','horr-131703','بن خلف','Horr',9177,131703),
+('IR','WAZ','hashiyeh-rud-131705','حاشيه رود','Hashiyeh Rud',1381,131705),
+('IR','ISF','hashemabad-131713','هاشم آباد','Hashemabad',1029,131713),
+('IR','GIL','hasan-rud-131743','حسن رود','Hasan Rud',1466,131743),
+('IR','THR','hasanabad-131831','حسن آباد','Hasanabad',43922,131831),
+('IR','CHB','haruni-131946','هارونی','Haruni',3601,131946),
+('IR','KSH','harsin-131962','هرسین','Harsin',57647,131962),
+('IR','CHB','harchegan-131994','هرچگان','Harchegan',1996,131994),
+('IR','ISF','hanna-132030','حنّا','Hanna',4922,132030),
+('IR','KHZ','hamidiyeh-132105','حمیدیه','Hamidiyeh',22057,132105),
+('IR','ISF','hamgin-132119','همگین','Hamgin',1171,132119),
+('IR','HAM','hamadan-132144','همدان','Hamadan',528256,132144),
+('IR','GLS','hajji-qushan-132214','حاجی قوشان','Hajji Qushan',4546,132214),
+('IR','WAZ','hajjilar-132233','حاجیلار','Hajjilar',1394,132233),
+('IR','HRZ','hajji-khademi-132237','حاجّی خادِم','Hajji Khademi',2955,132237),
+('IR','FRS','hajjiabad-132371','حاجی آباد','Hajjiabad',1777,132371),
+('IR','FRS','hajjiabad-132380','حاجی آباد','Hajjiabad',21675,132380),
+('IR','HRZ','hajjiabad-132382','حاجی آباد','Hajjiabad',23309,132382),
+('IR','THR','haft-juy-132423','هفت جوی','Haft Juy',3137,132423),
+('IR','KHZ','haftkel-132428','هفتکل','Haftkel',15802,132428),
+('IR','MRK','hafteh-132430','هفته','Hafteh',2681,132430),
+('IR','CHB','hafshejan-132458','هفشجان','Hafshejan',21352,132458),
+('IR','FRS','guyom-132513','گویم','Guyom',7297,132513),
+('IR','HRZ','gurzang-132572','گورزانگ','Gurzang',3089,132572),
+('IR','HRZ','gurband-132629','قَلعِۀ گوربَند','Gurband',2692,132629),
+('IR','BUS','gurak-sadat-132645','كورَك','Gurak Sadat',1066,132645),
+('IR','GIL','gurab-zarmikh-132647','گوراب زرمیخ','Gurab Zarmikh',4840,132647),
+('IR','GIL','gurabjir-e-sahra-132650','گور آبجیر','Gurabjir-e Sahra',1507,132650),
+('IR','GLS','gukjeh-132680','بوكچِه','Gukjeh',1381,132680),
+('IR','CHB','gujan-132687','گوجان','Gujan',6179,132687),
+('IR','ISF','guged-132697','گوگد','Guged',6012,132697),
+('IR','WAZ','gowharan-132743','گوهران','Gowharan',2557,132743),
+('IR','ARD','guk-tappeh-132747','گوک تپه','Guk Tappeh',1335,132747),
+('IR','HRZ','gerzeh-132841','گرزه','Gerzeh',1170,132841),
+('IR','GLS','gorgan-132892','اَستِر آباد','Gorgan',244937,132892),
+('IR','KER','gonjan-132919','گنجان','Gonjan',1428,132919),
+('IR','GLS','gonbad-e-kavus-132938','گنبد قابوس','Gonbad-e Kavus',151910,132938),
+('IR','RKH','gonabad-132961','گناباد','Gonabad',43465,132961),
+('IR','THR','gol-tappeh-kabir-133020','گل تپّه','Gol Tappeh Kabir',10850,133020),
+('IR','HAM','gol-tappeh-133021','گل تپه','Gol Tappeh',2237,133021),
+('IR','ISF','golpayegan-133037','گلپایگان','Golpayegan',58936,133037),
+('IR','RKH','golmakan-133051','گلمکان','Golmakan',8373,133051),
+('IR','NKH','golian-133089','گلیان','Golian',598,133089),
+('IR','ALB','golestanak-133133','گلستانک','Golestanak',1827,133133),
+('IR','THR','shahrak-e-goldasteh-133166','شهرک گلدسته','Shahrak-e Goldasteh',7602,133166),
+('IR','KSH','gilan-e-gharb-133345','گیلان غرب','Gilan-e Gharb',0,133345),
+('IR','KHZ','gheyzaniyeh-133416','غیزانیه','Gheyzaniyeh',2794,133416),
+('IR','RKH','garu-133528','گرو','Garu',1724,133528),
+('IR','GLS','geri-dowji-133538','گری','Geri Dowji',2826,133538),
+('IR','HRZ','gerdu-133555','گردو','Gerdu',1878,133555),
+('IR','FRS','gerash-133595','گراش','Gerash',34469,133595),
+('IR','QOM','ja-fariyeh-133677','جعفریه','Ja''fariyeh',9387,133677),
+('IR','MAZ','gazanak-133752','گزنک','Gazanak',319,133752),
+('IR','GLS','gaz-e-gharbi-133767','گز','Gaz-e Gharbi',1883,133767),
+('IR','MRK','gav-khaneh-133819','گاو خانه','Gav Khaneh',3296,133819),
+('IR','EAZ','gugan-133831','گاوكان','Gugan',11742,133831),
+('IR','HRZ','parsian-133852','گاوبندی','Parsian',18045,133852),
+('IR','RKH','govareshk-133860','گوارشك','Govareshk',1043,133860),
+('IR','KHZ','gotvand-133884','شهرستان گتوند','Gotvand',24216,133884),
+('IR','HRZ','garuk-133930','گروک','Garuk',4008,133930),
+('IR','SEM','garmsar-133964','شَهرِ قِشلاق','Garmsar',48672,133964),
+('IR','ARD','germi-133972','گرمی','Germi',28967,133972),
+('IR','NKH','garmeh-133978','گرمه','Garmeh',0,133978),
+('IR','CHB','garm-darreh-133984','گرم دره','Garm Darreh',1315,133984),
+('IR','BUS','gargur-134034','گرگور','Gargur',1002,134034),
+('IR','LOR','garab-134102','گراب','Garab',3295,134102),
+('IR','LOR','gandomineh-134167','گندمینه','Gandomineh',1407,134167),
+('IR','CHB','gandoman-134173','قَلعِۀ گَندُمان','Gandoman',6291,134173),
+('IR','BUS','bandar-e-genaveh-134217','بندر گناوه','Bandar-e Genaveh',52750,134217),
+('IR','MAZ','galugah-134255','گلوگاه','Galugah',21352,134255),
+('IR','MAZ','galugah-134256','گلوگاه','Galugah',21352,134256),
+('IR','GLS','galikesh-134282','گاليكش','Galikesh',23394,134282),
+('IR','FRS','galehdar-134296','گله دار','Galehdar',13448,134296),
+('IR','FRS','gachi-134377','گچی','Gachi',2226,134377),
+('IR','GIL','fuman-134441','فومن','Fuman',35841,134441),
+('IR','FRS','fishvar-134459','فیش ور','Fishvar',5395,134459),
+('IR','THR','firuzkuh-134462','فيروزكوه','Firuzkuh',17453,134462),
+('IR','FRS','firuzi-134469','فیروزی','Firuzi',2639,134469),
+('IR','HAM','firuzan-134480','فیروز آباد بالا','Firuzan',5173,134480),
+('IR','THR','firuzabad-134495','فيروز آباد','Firuzabad',8756,134495),
+('IR','FRS','firuzabad-134518','فیروز آباد','Firuzabad',65417,134518),
+('IR','WAZ','firuraq-134520','فیرورق','Firuraq',9190,134520),
+('IR','THR','filestan-134534','فيلستان','Filestan',4431,134534),
+('IR','CHB','filabad-134540','فيل آباد','Filabad',4656,134540),
+('IR','RKH','feyzabad-134563','فیض آباد','Feyzabad',0,134563),
+('IR','WAZ','fesenduz-134597','فسندوز','Fesenduz',2461,134597),
+('IR','THR','ferunabad-134598','شهرک فرون آباد','Ferunabad',21682,134598),
+('IR','ISF','fereydunshahr-134601','فریدون شهر','Fereydunshahr',13603,134601),
+('IR','MAZ','fereydun-kenar-134602','فريدون كنار','Fereydun Kenar',34097,134602),
+('IR','SKH','ferdows-134613','فردوس','Ferdows',28965,134613),
+('IR','GLS','fazelabad-134636','فاضل آباد','Fazelabad',19461,134636),
+('IR','FRS','fathabad-134691','فتح آباد','Fathabad',3804,134691),
+('IR','FRS','karzin-134695','شهرك فتح آباد','Karzin',8841,134695),
+('IR','ALB','fashand-134714','فشند','Fashand',2334,134714),
+('IR','THR','fasham-134715','فشم','Fasham',6945,134715),
+('IR','FRS','fasa-134721','فسا','Fasa',98061,134721),
+('IR','BUS','faryab-134734','فارياب','Faryab',2221,134734),
+('IR','KER','faryab-134735','فاریاب','Faryab',4863,134735),
+('IR','FRS','faruq-134743','فاروق','Faruq',5860,134743),
+('IR','NKH','faruj-134745','فاروج','Faruj',12061,134745),
+('IR','QAZ','farsiyan-134756','فارسيان','Farsiyan',3473,134756),
+('IR','CHB','farsan-134762','فارسان','Farsan',30504,134762),
+('IR','QAZ','farsijin-134764','فارسجین','Farsijin',1860,134764),
+('IR','HAM','farsafaj-134765','فَرسَفَج','Farsafaj',1526,134765),
+('IR','THR','farrokhabad-134775','فرخ آباد','Farrokhabad',5407,134775),
+('IR','FRS','farrashband-134781','فراشبند','Farrashband',20320,134781),
+('IR','MRK','farmahin-134788','فرمهين','Farmahin',5756,134788),
+('IR','RKH','fariman-134809','فریمان','Fariman',0,134809),
+('IR','HRZ','fareghan-134832','فارغان','Fareghan',1773,134832),
+('IR','RKH','abbasabad-e-faramushan-134846','عباس آباد فراموشان','''Abbasabad-e Faramushan',2965,134846),
+('IR','YAZ','faragheh-134877','فراغه','Faragheh',1040,134877),
+('IR','SBL','fannuj-134894','فنوج','Fannuj',13000,134894),
+('IR','ISF','fami-134902','فمی','Fami',1142,134902),
+('IR','HAM','gamasb-134905','فاماست','Gamasb',1081,134905),
+('IR','HAM','famenin-134906','فامنین','Famenin',14208,134906),
+('IR','FRS','fal-134920','فال','Fal',3757,134920),
+('IR','GIL','fakhrabad-134936','فخر آباد','Fakhrabad',1077,134936),
+('IR','YAZ','fahraj-134961','فهرج','Fahraj',2963,134961),
+('IR','KER','fahraj-134962','فهرج','Fahraj',0,134962),
+('IR','HAM','aznav-134988','ازناو','Aznav',5411,134988),
+('IR','THR','a-ineh-varzan-135015','آينه ورزان','A''ineh Varzan',1156,135015),
+('IR','MRK','ayjan-135045','ايجان','Ayjan',1161,135045),
+('IR','WAZ','ivaowghli-135047','ایواوغلی','Ivaowghli',3320,135047),
+('IR','FRS','evaz-135053','اوز','Evaz',19987,135053),
+('IR','MRK','ostuh-135059','استوه','Ostuh',2363,135059),
+('IR','ISF','estark-135075','استرک','Estark',1800,135075),
+('IR','FRS','estahban-135094','استهبان','Estahban',36410,135094),
+('IR','KSH','eslamabad-e-gharb-135175','اسلام آباد غرب','Eslamabad-e Gharb',90559,135175),
+('IR','ALB','eshtehard-135205','اشتهارد','Eshtehard',29993,135205),
+('IR','FRS','eshkanan-135244','اشکنان','Eshkanan',9115,135244),
+('IR','NKH','esfarayen-135298','اسفراین','Esfarayen',59490,135298),
+('IR','ISF','esfarjan-135301','اسفرجان','Esfarjan',1904,135301),
+('IR','EAZ','esfanjan-135303','اسفنجان','Esfanjan',3544,135303),
+('IR','EAZ','esfahlan-135326','اسفهلان','Esfahlan',4939,135326),
+('IR','FRS','eqlid-135355','اقلید','Eqlid',44341,135355),
+('IR','CHB','dastgerd-e-emamzadeh-135405','دستگرد امامزاده','Dastgerd-e Emamzadeh',2810,135405),
+('IR','SEM','shahrud-135423','اِمامشَهر','Shahrud',165000,135423),
+('IR','CHB','emam-qeys-135434','امام قیس','Emam Qeys',2758,135434),
+('IR','BUS','emam-hasan-135446','امام حسن','Emam Hasan',2731,135446),
+('IR','KER','ekhtiarabad-135474','اختیار آباد','Ekhtiarabad',9840,135474),
+('IR','EAZ','ebrahim-sami-135484','ابراهیم سمیع','Ebrahim Sami''',2721,135484),
+('IR','KRD','ebrahimabad-135511','ابراهيم آباد','Ebrahimabad',2682,135511),
+('IR','MRK','ebrahimabad-135515','ابراهيم آباد','Ebrahimabad',1593,135515),
+('IR','YAZ','ebrahimabad-135518','ابراهيم آباد','Ebrahimabad',1509,135518),
+('IR','FRS','duzeh-135554','دوزه','Duzeh',1348,135554),
+('IR','EAZ','duzduzan-135555','دوزدوزان','Duzduzan',3627,135555),
+('IR','FRS','dudej-135658','دودج','Dudej',2774,135658),
+('IR','FRS','dowdej-135659','دودج','Dowdej',1143,135659),
+('IR','EAZ','dowlatabad-135730','دولت آباد','Dowlatabad',3868,135730),
+('IR','RKH','dowlatabad-135743','دولت آباد','Dowlatabad',0,135743),
+('IR','ISF','dowlatabad-135760','دولت آباد','Dowlatabad',1772,135760),
+('IR','KER','dowlatabad-e-ansari-135795','دولت آباد انصاری','Dowlatabad-e Ansari',2820,135795),
+('IR','KER','dowlatabad-e-esfandaqeh-135800','دولت آباد اسفندقه','Dowlatabad-e Esfandaqeh',4930,135800),
+('IR','KER','dowlatabad-135806','دولت آباد','Dowlatabad',3111,135806),
+('IR','BUS','doveyreh-135828','دويره','Doveyreh',4096,135828),
+('IR','FRS','dust-e-iran-135860','دوست ایران','Dust-e Iran',2424,135860),
+('IR','RKH','doruneh-135870','درونه','Doruneh',1603,135870),
+('IR','BUS','dorudgah-135875','درودگاه','Dorudgah',2820,135875),
+('IR','LOR','dorud-135878','دورود','Dorud',121638,135878),
+('IR','HRZ','dom-shahr-135928','دم شهر','Dom Shahr',1806,135928),
+('IR','LOR','domrustan-135930','دمروستان','Domrustan',1113,135930),
+('IR','FRS','do-kuhak-135977','دو کوهک','Do Kuhak',4453,135977),
+('IR','KBA','dogonbadan-136014','دُو گُنبَدان','Dogonbadan',96728,136014),
+('IR','FRS','do-borji-136050','دو برجی','Do Borji',2907,136050),
+('IR','KER','do-boneh-136053','دو بنه','Do Boneh',3217,136053),
+('IR','ZAN','do-asb-136073','دو اسب','Do Asb',2726,136073),
+('IR','EAZ','sharafkhaneh-136125','بندر شرفخانه','Sharafkhaneh',4244,136125),
+('IR','EAZ','dizaj-hoseyn-beyg-136128','حُسِين بِيك ديزِه','Dizaj Hoseyn Beyg',4060,136128),
+('IR','EAZ','dizaj-e-olya-136129','ديزَج','Dizaj-e ''Olya',2925,136129),
+('IR','WAZ','dizaj-diz-136132','ديز جديز','Dizaj Diz',8282,136132),
+('IR','ZAN','dizajabad-136133','دیزج','Dizajabad',4157,136133),
+('IR','WAZ','dizaj-136135','ديزَج','Dizaj',4907,136135),
+('IR','KRD','divandarreh-136156','ديواندره','Divandarreh',34007,136156),
+('IR','HRZ','divan-136159','ديوان','Divan',1931,136159),
+('IR','KBA','dishmuk-136164','ديشموک','Dishmuk',5791,136164),
+('IR','HAM','dinarabad-136187','دَندَر آباد','Dinarabad',2300,136187),
+('IR','KHZ','dezful-136256','دزفول','Dezful',264709,136256),
+('IR','BUS','bandar-e-deyr-136280','بندر دیر','Bandar-e Deyr',24083,136280),
+('IR','GIL','deylaman-136296','دیلمان','Deylaman',1729,136296),
+('IR','SKH','deyhuk-136301','دیهوک','Deyhuk',2959,136301),
+('IR','BUS','delvar-136379','بندر دلوار','Delvar',4442,136379),
+('IR','MRK','delijan-136399','دليجان','Delijan',33508,136399),
+('IR','THR','deh-shadabad-e-bala-136508','ده شاد آباد بالا','Deh Shadabad-e Bala',3651,136508),
+('IR','CHB','deh-sahra-136524','ده صحرا','Deh Sahra',2697,136524),
+('IR','FRS','dehram-136538','دهرم','Dehram',3468,136538),
+('IR','BUS','deh-qa-ed-136547','ده قائد','Deh Qa''ed',7509,136547),
+('IR','KSH','deh-pahn-136556','ده پهن','Deh Pahn',6548,136556),
+('IR','FRS','deh-now-136660','ده نو','Deh Now',1271,136660),
+('IR','BUS','dehnow-136661','دهنو','Dehnow',1930,136661),
+('IR','MRK','deh-e-namak-136672','ده نمک','Deh-e Namak',1846,136672),
+('IR','ILM','dehloran-136702','دهلران','Dehloran',46002,136702),
+('IR','KSH','dehlor-136704','دهلر','Dehlor',1023,136704),
+('IR','HAM','dehlaq-136716','دهلق','Dehlaq',1586,136716),
+('IR','FRS','dehkuyeh-136721','دهکویه','Dehkuyeh',4523,136721),
+('IR','KHZ','dehkadeh-136757','دهکده','Dehkadeh',2951,136757),
+('IR','KRD','dehgolan-136773','دهگلان','Dehgolan',0,136773),
+('IR','SKH','deheshk-136823','دهشک','Deheshk',1597,136823),
+('IR','FRS','deh-e-shib-136826','ده شیب','Deh-e Shib',944,136826),
+('IR','SEM','dehmolla-136902','دهملا','Dehmolla',1090,136902),
+('IR','KHZ','dehdez-136983','دهدز','Dehdez',5490,136983),
+('IR','KBA','dehdasht-136987','دهدشت','Dehdasht',57036,136987),
+('IR','CHB','deh-cheshmeh-137000','ده چشمه','Deh Cheshmeh',4510,137000),
+('IR','KBA','sisakht-137013','دِه بُزُرگِ سيساخت','Sisakht',7855,137013),
+('IR','FRS','safashahr-137025','ده بید','Safashahr',26933,137025),
+('IR','ISF','dehaqan-137057','دهاقان','Dehaqan',17945,137057),
+('IR','ISF','dehaq-137063','دهق','Dehaq',8272,137063),
+('IR','THR','davudabad-137109','داود آباد','Davudabad',6399,137109),
+('IR','MRK','davudabad-137110','داود آباد','Davudabad',5491,137110),
+('IR','RKH','davarzan-137125','داورزن','Davarzan',0,137125),
+('IR','HAM','dastjerd-137164','دستجرد','Dastjerd',2955,137164),
+('IR','CHB','dastna-137202','دستنا','Dastna''',5143,137202),
+('IR','GIL','dastak-137204','دستک','Dastak',2122,137204),
+('IR','HRZ','dashti-137219','دشتی','Dashti',4495,137219),
+('IR','KHZ','susangerd-137268','سوسنگرد','Susangerd',51431,137268),
+('IR','CHB','dashtak-137292','دشتک','Dashtak',4016,137292),
+('IR','NKH','dasht-137302','دشت','Dasht',1393,137302),
+('IR','MAZ','shahrak-e-darya-kenar-137345','شهرک دریا کنار','Shahrak-e Darya Kenar',2150,137345),
+('IR','ILM','darreh-shahr-137436','دره شهر','Darreh Shahr',24961,137436),
+('IR','RKH','dargaz-137585','دره گز','Dargaz',36762,137585),
+('IR','ISF','darreh-bid-137640','درّه بید','Darreh Bid',2329,137640),
+('IR','ISF','darreh-bid-137641','دره بید','Darreh Bid',1497,137641),
+('IR','KHZ','darkhovin-137724','دارخوین','Darkhovin',5655,137724),
+('IR','HAM','darjazin-137741','درجزین','Darjazin',1331,137741),
+('IR','EAZ','daryan-137756','داريّان','Daryan',4138,137756),
+('IR','FRS','dariun-137758','داریون','Dariun',10037,137758),
+('IR','HRZ','dargahan-137782','بندر درگهان','Dargahan',14525,137782),
+('IR','KER','darb-e-behesht-137850','درب بهشت','Darb-e Behesht',10670,137850),
+('IR','ISF','daran-137929','داران','Daran',20078,137929),
+('IR','MAZ','darab-kola-137946','داراب كلا','Darab Kola',5262,137946),
+('IR','FRS','darab-137956','داراب','Darab',70232,137956),
+('IR','HAM','daqdaqabad-137964','داقداق آباد','Daqdaqabad',4208,137964),
+('IR','QAZ','danesfahan-137985','دانسفهان','Danesfahan',9434,137985),
+('IR','SEM','damghan-138025','دامغان','Damghan',67694,138025),
+('IR','THR','damavand-138042','دماوند','Damavand',29144,138042),
+('IR','EAZ','daman-jan-138046','دامن جان','Daman Jan',1847,138046),
+('IR','ISF','damaneh-138050','دامنه','Damaneh',4766,138050),
+('IR','BUS','dalaki-138098','دالكی','Dalaki',6436,138098),
+('IR','HAM','dahnejerd-138132','دهنجرد','Dahnejerd',1019,138132),
+('IR','FRS','dabiran-138226','دوبران','Dabiran',13809,138226),
+('IR','ZAN','chuzuk-138236','جوريك','Chuzuk',1787,138236),
+('IR','ISF','chupanan-138255','چوپانان','Chupanan',1826,138255),
+('IR','QAZ','chubin-dar-138295','جوبين در','Chubin Dar',8083,138295),
+('IR','GIL','chubar-138309','چوبر','Chubar',5554,138309),
+('IR','WAZ','churs-138315','چورس','Churs',2081,138315),
+('IR','WAZ','chowplu-138316','چوپلو','Chowplu',1788,138316),
+('IR','GIL','chubar-138331','چوبر','Chubar',1069,138331),
+('IR','BUS','choghadak-138381','چغادک','Choghadak',18702,138381),
+('IR','KBA','chitab-138393','چیتاب','Chitab',1164,138393),
+('IR','GIL','chini-jan-138404','چینی جان','Chini Jan',1311,138404),
+('IR','RKH','chesham-138443','چشام','Chesham',1395,138443),
+('IR','KRD','cheshmidar-138444','چشمیدر','Cheshmidar',1273,138444),
+('IR','HAM','chishin-138618','چیشین','Chishin',1447,138618),
+('IR','HAM','chenar-e-sofla-138691','شیخ','Chenar-e Sofla',3628,138691),
+('IR','RKH','chenaran-138742','چناران','Chenaran',53879,138742),
+('IR','CHB','cholicheh-138796','چليچه','Cholicheh',4945,138796),
+('IR','CHB','chelgard-138799','چلگرد','Chelgard',2989,138799),
+('IR','KHZ','chu-ebdeh-ye-yek-138901','چوئبده یک','Chu''ebdeh-ye Yek',7906,138901),
+('IR','ILM','chavar-138905','كانی چَوار','Chavar',5831,138905),
+('IR','KER','chatrud-138911','چترود','Chatrud',5860,138911),
+('IR','KBA','charam-138989','تل گرد چرام','Charam',15218,138989),
+('IR','LOR','chaqabol-139015','رحمان','Chaqabol',0,139015),
+('IR','RKH','chapeshlu-139027','چاپشلو','Chapeshlu',2374,139027),
+('IR','GIL','chamkhaleh-139116','چمخاله','Chamkhaleh',8840,139116),
+('IR','KHZ','cham-golak-139131','چم گلک','Cham Golak',5446,139131),
+('IR','MAZ','chamaz-koti-139194','چماز كتی','Chamaz Koti',5436,139194),
+('IR','RKH','chamanabad-139211','چمن آباد','Chamanabad',1804,139211),
+('IR','MAZ','chalus-139223','چالوس','Chalus',107490,139223),
+('IR','CHB','chaleshtar-139228','چالشتر','Chaleshtar',6720,139228),
+('IR','MAZ','chalandar-139307','چلندر','Chalandar',1383,139307),
+('IR','BUS','chahar-rusta-i-139656','چهار روستائی','Chahar Rusta''i',2365,139656),
+('IR','THR','chahar-dangeh-139706','چهاردنگه','Chahar Dangeh',49950,139706),
+('IR','WAZ','chahar-borj-139719','چهار برج قدیم','Chahar Borj',9406,139719),
+('IR','ISF','chadegan-139780','چادگان','Chadegan',9924,139780),
+('IR','GIL','chaboksar-139784','چابکسر','Chaboksar',8224,139784),
+('IR','BUS','bushkan-139815','بوشكان','Bushkan',2135,139815),
+('IR','BUS','bushehr-139817','بندر بوشهر','Bushehr',165377,139817),
+('IR','BUS','bu-ol-kheyr-139862','بو الخير','Bu ol Kheyr',2252,139862),
+('IR','THR','bumahen-139879','بوم هِند','Bumahen',79034,139879),
+('IR','WAZ','bukan-139889','بوکان','Bukan',193501,139889),
+('IR','QAZ','bu-in-zahra-139903','بوئین زهرا','Bu''in Zahra',0,139903),
+('IR','HAM','bubukabad-139926','بوبوک آباد','Bubukabad',1027,139926),
+('IR','BUS','bozbaz-139981','بزباز','Bozbaz',2286,139981),
+('IR','KHZ','bostan-140023','بستان','Bostan',8476,140023),
+('IR','LOR','borujerd-140044','بروجرد','Borujerd',251958,140044),
+('IR','CHB','borujen-140046','اَمروجان','Borujen',57071,140046),
+('IR','BUS','borazjan-140097','برازجان','Borazjan',110567,140097),
+('IR','KHZ','shahrak-e-kuluri-140216','بنه حسين کلولی','Shahrak-e Kuluri',1941,140216),
+('IR','BUS','boneh-gaz-140225','بنه گز','Boneh Gaz',3254,140225),
+('IR','BUS','bondaruz-140295','بنداروز','Bondaruz',3724,140295),
+('IR','CHB','boldaji-140346','بلداجی','Boldaji',11980,140346),
+('IR','NKH','bojnurd-140380','بجنورد','Bojnurd',192041,140380),
+('IR','MAZ','bizaki-140418','بيزكی','Bizaki',1768,140418),
+('IR','SKH','birjand-140463','بيرجند','Birjand',196982,140463),
+('IR','EAZ','bilverdi-140489','بيلوردی','Bilverdi',1215,140489),
+('IR','ARD','bileh-savar-140494','بيله سوار','Bileh Savar',14000,140494),
+('IR','HRZ','bi-kah-140511','بيكا','Bi Kah',7190,140511),
+('IR','KRD','bijar-140521','بيجار','Bijar',50014,140521),
+('IR','SKH','bihud-140525','بیهود','Bihud',1577,140525),
+('IR','BUS','bidkhun-140586','بيدخون','Bidkhun',8886,140586),
+('IR','NKH','bidak-140664','بيدك','Bidak',3482,140664),
+('IR','FRS','beyram-140762','بیرم','Beyram',7300,140762),
+('IR','FRS','bereshneh-140838','برشنه','Bereshneh',3196,140838),
+('IR','HRZ','berentin-140839','برنطين','Berentin',5799,140839),
+('IR','FRS','barak-140851','براک','Barak',2882,140851),
+('IR','EAZ','benab-e-marand-140888','بناب','Benab-e Marand',4311,140888),
+('IR','EAZ','bonab-140889','بناب','Bonab',80359,140889),
+('IR','CHB','ben-140891','بن','Ben',12971,140891),
+('IR','MAZ','behshahr-140918','اَشرَف','Behshahr',94702,140918),
+('IR','MAZ','bahnemir-140926','بهنمير','Bahnemir',7906,140926),
+('IR','KHZ','behbahan-140951','بهبهان','Behbahan',122604,140951),
+('IR','RKH','bahabad-140956','بهاباد','Bahabad',1423,140956),
+('IR','MRK','shahbaz-140982','بازنه','Shahbaz',7536,140982),
+('IR','GIL','baz-kia-gurab-140993','باز کیا گوراب','Baz Kia Gurab',4166,140993),
+('IR','WAZ','bazargan-141011','بازرگان','Bazargan',9979,141011),
+('IR','GIL','masal-141015','بازار ماسال','Masal',17901,141015),
+('IR','FRS','banuj-141029','بانوج','Banuj',2676,141029),
+('IR','FRS','bayegan-141034','بایگان','Bayegan',2481,141034),
+('IR','HRZ','baverd-141068','باورد','Baverd',1077,141068),
+('IR','KSH','bavaleh-141079','باوله','Bavaleh',1080,141079),
+('IR','SEM','bastam-141100','بسطام','Bastam',8609,141100),
+('IR','HRZ','bastak-141104','بستک','Bastak',9959,141104),
+('IR','EAZ','basmenj-141111','باسمنج','Basmenj',12692,141111),
+('IR','KBA','basht-141124','باشت','Basht',10764,141124),
+('IR','GIL','bashman-141132','باشمن','Bashman',2320,141132),
+('IR','RKH','basfar-141154','باسفر','Basfar',3917,141154),
+('IR','BUS','besatin-141160','بساتين','Besatin',1244,141160),
+('IR','WAZ','baruq-141190','باروق','Baruq',4225,141190),
+('IR','EAZ','baruj-141191','باروج','Baruj',2481,141191),
+('IR','FRS','bahreghan-141282','برغان','Bahreghan',3167,141282),
+('IR','MAZ','bargeh-141285','برگه','Bargeh',1447,141285),
+('IR','BUS','bardestan-141348','بردبستان','Bardestan',7112,141348),
+('IR','RKH','bardaskan-141349','برداسکن','Bardaskan',28233,141349),
+('IR','CHB','bardeh-141375','بارده','Bardeh',2356,141375),
+('IR','KER','baravat-141407','بروات','Baravat',22761,141407),
+('IR','CHB','bar-aftab-e-milas-141441','بر آفتاب ميلاس','Bar Aftab-e Milas',1223,141441),
+('IR','HRZ','bandzak-141533','بندرك','Bandzak',4796,141533),
+('IR','KER','siyah-banu-iyeh-141542','سیه بنوئیه','Siyah Banu''iyeh',2060,141542),
+('IR','KRD','baneh-141584','بانه','Baneh',110218,141584),
+('IR','HRZ','bandar-e-mo-allem-141613','بندر بند معلم','Bandar-e Mo''allem',1086,141613),
+('IR','GLS','bandar-e-torkaman-141653','بندر تركمن','Bandar-e Torkaman',53970,141653),
+('IR','HRZ','bandar-e-shenas-141656','بندر شناس','Bandar-e Shenas',2998,141656),
+('IR','BUS','bandar-e-rig-141657','بندر ريگ','Bandar-e Rig',6252,141657),
+('IR','HRZ','moghuyeh-141659','بندر مغویه','Moghuyeh',1125,141659),
+('IR','KHZ','bandar-e-mahshahr-141663','بندر ماهشهر','Bandar-e Mahshahr',162797,141663),
+('IR','HRZ','bandar-e-lengeh-141665','بندر لنگه','Bandar-e Lengeh',30435,141665),
+('IR','HRZ','bandar-e-kong-141666','بندر کنگ','Bandar-e Kong',19213,141666),
+('IR','GLS','bandar-e-gaz-141673','بندر گز','Bandar-e Gaz',20742,141673),
+('IR','BUS','bandar-e-deylam-141676','بندر ديلم','Bandar-e Deylam',25730,141676),
+('IR','HRZ','bandar-e-charak-141678','بندر چارک','Bandar-e Charak',4066,141678),
+('IR','GIL','bandar-e-anzali-141679','بندر انزلی','Bandar-e Anzali',118564,141679),
+('IR','HRZ','bandar-abbas-141681','بندر عباس','Bandar Abbas',352173,141681),
+('IR','BUS','banak-141702','بنک','Banak',14126,141702),
+('IR','NKH','bam-141734','بام','Bam',1368,141734),
+('IR','KER','bam-141736','بم','Bam',99268,141736),
+('IR','KER','balvard-141738','بلورد','Balvard',3534,141738),
+('IR','ISF','boltaq-141758','بلطاق','Boltaq',1462,141758),
+('IR','WAZ','balanej-141806','بلانج','Balanej',3023,141806),
+('IR','GLS','bala-jaddeh-141821','بالا جاده','Bala Jaddeh',3604,141821),
+('IR','FRS','valashahr-141833','بالا ده','Valashahr',5972,141833),
+('IR','FRS','bala-deh-141834','بالا ده','Bala Deh',6162,141834),
+('IR','ALB','bakhtiar-141852','بختيار','Bakhtiar',3520,141852),
+('IR','EAZ','bakhshayesh-141857','بخشایش','Bakhshayesh',6102,141857),
+('IR','RKH','bajestan-141891','بجستان','Bajestan',0,141891),
+('IR','MAZ','bayjan-141899','بايجان','Bayjan',415,141899),
+('IR','EAZ','bahram-141944','بهرام','Bahram',1322,141944),
+('IR','FRS','bahman-141971','بهمن','Bahman',7568,141971),
+('IR','HAM','bahar-142000','بهار','Bahar',28645,142000),
+('IR','HAM','bahador-bayk-142010','بهادربیک','Bahador Bayk',2672,142010),
+('IR','THR','baghkomish-142043','باغ كمش','Baghkomish',2566,142043),
+('IR','KER','baghin-142049','باغین','Baghin',10407,142049),
+('IR','EAZ','bagh-e-ma-ruf-142112','باغ معروف','Bagh-e Ma''ruf',12068,142112),
+('IR','KHZ','bagh-e-malek-142114','باغ ملک','Bagh-e Malek',26343,142114),
+('IR','CHB','bagh-e-behzad-142149','باغ بهزاد','Bagh-e Behzad',2454,142149),
+('IR','SKH','baghdadeh-142177','بغداده','Baghdadeh',1808,142177),
+('IR','FRS','baghan-142209','باغان','Baghan',2744,142209),
+('IR','BUS','baghan-142211','باغان','Baghan',1574,142211),
+('IR','KER','baft-142247','بافت','Baft',34517,142247),
+('IR','ISF','bafran-142251','بافران','Bafran',1978,142251),
+('IR','YAZ','bafq-142255','بافق','Bafq',45453,142255),
+('IR','HAM','bad-khowreh-142277','باد خوره','Bad Khowreh',2019,142277),
+('IR','ISF','bad-rud-142350','باد رود','Bad Rud',14723,142350),
+('IR','MAZ','babolsar-142358','بابلسر','Babolsar',48051,142358),
+('IR','MAZ','babol-142363','بابل','Babol',202796,142363),
+('IR','FRS','bab-anar-142386','باب انار','Bab Anar',7061,142386),
+('IR','HAM','baban-142423','بابان','Baban',3026,142423),
+('IR','CHB','baba-heydar-142453','بابا حيدر','Baba Heydar',11202,142453),
+('IR','LOR','azna-142496','ازنا','Azna',47482,142496),
+('IR','LOR','azna-142497','ازنا','Azna',47489,142497),
+('IR','KSH','ozgoleh-142541','ازگله','Ozgoleh',1502,142541),
+('IR','EAZ','hashtrud-142554','هشترود','Hashtrud',20572,142554),
+('IR','MRK','shazand-142567','شازند','Shazand',21181,142567),
+('IR','SKH','ayask-142587','آیسک','Ayask',5143,142587),
+('IR','MRK','aveh-142623','آوه','Aveh',3906,142623),
+('IR','HAM','avarzaman-142628','آب زَمام','Avarzaman',1621,142628),
+('IR','QAZ','avaj-142642','آوج','Avaj',0,142642),
+('IR','GIL','astara-142676','آستارا','Astara',39065,142676),
+('IR','GIL','astaneh-ye-ashrafiyeh-142679','آستانه اشرفیه','Astaneh-ye Ashrafiyeh',44941,142679),
+('IR','MRK','astaneh-142681','آستانه','Astaneh',7166,142681),
+('IR','FRS','asopas-142690','آسپاس','Asopas',2016,142690),
+('IR','ARD','aslan-duz-142703','اصلان دوز','Aslan Duz',6348,142703),
+('IR','FRS','asir-142716','اسیر','Asir',3042,142716),
+('IR','MRK','ashtian-142744','آشتيان','Ashtian',8763,142744),
+('IR','QAZ','ashnestan-142757','آشنستان','Ashnestan',1068,142757),
+('IR','NKH','ashkhaneh-142768','آشخانه','Ashkhaneh',25104,142768),
+('IR','ISF','asgaran-142813','عسگران','''Asgaran',4858,142813),
+('IR','QAZ','asfarvarin-142824','اسفرورین','Asfarvarin',12371,142824),
+('IR','EAZ','asenjan-142829','اسنجان','Asenjan',1745,142829),
+('IR','ALB','asara-142852','آسارا','Asara',1339,142852),
+('IR','BUS','bandar-e-asaluyah-142857','بندر عسلویه','Bandar-e ''Asaluyah',13557,142857),
+('IR','GIL','asalem-142859','اسالم','Asalem',10720,142859),
+('IR','SKH','asadiyeh-142862','اسدیه','Asadiyeh',0,142862),
+('IR','HAM','asadabad-142872','اسد آباد','Asadabad',55703,142872),
+('IR','KER','orzu-iyeh-142902','ارزوئیه','Orzu''iyeh',6868,142902),
+('IR','EAZ','arzanaq-142913','ارزنق','Arzanaq',1139,142913),
+('IR','EAZ','aruq-142932','آروق','Aruq',4462,142932),
+('IR','FRS','arsanjan-142958','ارسنجان','Arsanjan',17706,142958),
+('IR','KRD','armardeh-142975','آرمرده','Armardeh',2305,142975),
+('IR','THR','arjomand-142996','ارجمند','Arjomand',1124,142996),
+('IR','RKH','argha-143027','ارغا','Argha',2620,143027),
+('IR','ISF','ardestan-143052','اردستان','Ardestan',16058,143052),
+('IR','QAZ','ardaq-143064','ارادق','Ardaq',5043,143064),
+('IR','CHB','ardal-143070','اردل','Ardal',10113,143070),
+('IR','YAZ','ardakan-143073','اردکان','Ardakan',58834,143073),
+('IR','ARD','ardabil-143083','اردبيل','Ardabil',410753,143083),
+('IR','EAZ','arbatan-143090','اربطان','Arbatan',1563,143090),
+('IR','ISF','aran-bidgol-143122','آران','Aran Bidgol',65404,143122),
+('IR','MRK','arak-143127','اراک','Arak',503647,143127),
+('IR','SEM','aradan-143129','آرادان','Aradan',6252,143129),
+('IR','RKH','aq-kahrizak-143181','آق کهریزک','Aq Kahrizak',1106,143181),
+('IR','MRK','aqdash-143213','آقداش','Aqdash',2763,143213),
+('IR','HAM','aq-bolagh-e-aqdagh-143245','آق بلاغ','Aq Bolagh-e Aqdagh',1400,143245),
+('IR','GLS','aqabad-143305','آق آباد','Aqabad',5534,143305),
+('IR','QAZ','aqa-baba-143306','آقا بابا','Aqa Baba',2343,143306),
+('IR','HAM','anuch-143320','انوچ','Anuch',1833,143320),
+('IR','HRZ','guharan-143407','qalʿiە aangwran','Guharan',1170,143407),
+('IR','KHZ','andimeshk-143420','اندیمشک','Andimeshk',135116,143420),
+('IR','MAZ','andarvar-143435','اندرور','Andarvar',1611,143435),
+('IR','ARD','andabil-143449','اندبیل','Andabil',1302,143449),
+('IR','WAZ','anbi-143454','آبنی','Anbi',1254,143454),
+('IR','ARD','anbaran-143469','امین جان','''Anbaran',5757,143469),
+('IR','KER','anbarabad-143471','عنبر آباد','''Anbarabad',18185,143471),
+('IR','ISF','anarak-143492','انارک','Anarak',1903,143492),
+('IR','KER','anar-143499','انار','Anar',15532,143499),
+('IR','MAZ','amol-143534','آمل','Amol',237528,143534),
+('IR','GIL','amlash-143539','املش','Amlash',15444,143539),
+('IR','MAZ','amir-rud-143550','امیر رود','Amir Rud',1150,143550),
+('IR','MAZ','amir-kola-143561','امير كلا','Amir Kola',30478,143561),
+('IR','KHZ','jangiyeh-143574','جنگیه','Jangiyeh',4644,143574),
+('IR','QAZ','amirabad-143615','امیر آباد','Amirabad',1766,143615),
+('IR','FRS','kaftar-143648','امیر آباد کافتر','Kaftar',1368,143648),
+('IR','BUS','ameri-143700','بندر عامری','''Ameri',2581,143700),
+('IR','MRK','amanabad-143726','امان آباد','Amanabad',2135,143726),
+('IR','MRK','olusjerd-143755','الوسجرد','Olusjerd',1594,143755),
+('IR','CHB','aluni-143758','آلونی','Aluni',5248,143758),
+('IR','THR','alu-ak-143765','آلوئک','Alu''ak',1681,143765),
+('IR','ARD','alani-143788','آلنی','Alani',3739,143788),
+('IR','THR','shahriar-143860','شهريار','Shahriar',309607,143860),
+('IR','CHB','alikuh-143901','آليكوه','Alikuh',2206,143901),
+('IR','LOR','aligudarz-143921','الیگودرز','Aligudarz',89268,143921),
+('IR','EAZ','ali-beyglu-143939','علی بیگلو','''Ali Beyglu',1828,143939),
+('IR','ISF','ali-arab-143950','علی عرب','''Ali ''Arab',1248,143950),
+('IR','GIL','ziba-kenar-144035','بندر علی آباد','Ziba Kenar',1522,144035),
+('IR','GLS','ali-abad-e-katul-144038','علی آباد','''Ali Abad-e Katul',52838,144038),
+('IR','RKH','aliabad-144046','علی آباد','''Aliabad',3404,144046),
+('IR','ISF','aliabad-144077','علی آباد','''Aliabad',1375,144077),
+('IR','KHZ','elhayi-144222','الهائی','Elhayi',7651,144222),
+('IR','KRD','alek-144238','الک','Alek',1303,144238),
+('IR','ISF','alavijeh-144263','علویجه','Alavijeh',14550,144263),
+('IR','LOR','aleshtar-144269','الشتر','Aleshtar',27701,144269),
+('IR','MAZ','alasht-144270','آلاشت','Alasht',1193,144270),
+('IR','THR','alard-144273','آلارد','Alard',11616,144273),
+('IR','EAZ','alanjeq-144275','النجق','Alanjeq',1086,144275),
+('IR','MAZ','ruyan-144290','رویان','Ruyan',7731,144290),
+('IR','FRS','alamardasht-144305','علاء مرودشت','''Alamardasht',4068,144305),
+('IR','BUS','akhand-144364','آخوند','Akhand',6775,144364),
+('IR','FRS','akbarabad-144403','اکبر آباد','Akbarabad',1886,144403),
+('IR','FRS','akbarabad-144410','اکبر آباد','Akbarabad',5817,144410),
+('IR','MAZ','akand-144422','آكند','Akand',1416,144422),
+('IR','EAZ','ajab-shir-144443','اَجَبشَهر','Ajab Shir',29675,144443),
+('IR','KHZ','ahvaz-144448','ئەھواز','Ahvaz',841145,144448),
+('IR','MAZ','ahu-dasht-144462','آهو دشت','Ahu Dasht',1594,144462),
+('IR','BUS','ahram-144484','اهرم','Ahram',15198,144484),
+('IR','RKH','ahmadabad-144545','احمد آباد','Ahmadabad',2929,144545),
+('IR','MAZ','ahi-mahalleh-144612','آهی محله','Ahi Mahalleh',1204,144612),
+('IR','EAZ','ahar-144616','أهر','Ahar',100641,144616),
+('IR','EAZ','aqkand-144657','آق كند','Aqkand',2902,144657),
+('IR','KHZ','aghajari-144696','آغاجاری','Aghajari',21785,144696),
+('IR','ISF','afus-144713','Afūs','Afus',3696,144713),
+('IR','ISF','afjan-144737','افجان','Afjan',1491,144737),
+('IR','MRK','abyek-144794','آبيِك','Abyek',55128,144794),
+('IR','QAZ','abyek-144795','آبيِكِ پائين','Abyek',60107,144795),
+('IR','BUS','ab-tavil-144807','آب طويل','Ab Tavil',1507,144807),
+('IR','FRS','abu-ol-verdi-144826','ابو الوردی','Abu ol Verdi',2601,144826),
+('IR','KHZ','abu-homeyzeh-144853','ابر حمیطه','Abu Homeyzeh',5506,144853),
+('IR','KHZ','abu-dabos-144861','ابو ربس','Abu Dabos',1404,144861),
+('IR','HAM','abshineh-144895','آبشينِه','Abshineh',1429,144895),
+('IR','THR','ab-sard-144916','آبسرد','Ab Sard',10648,144916),
+('IR','GIL','abkenar-145005','آبکنار','Abkenar',1926,145005),
+('IR','ZAN','abi-ye-sofla-145025','آبی سفلی','Abi-ye Sofla',1875,145025),
+('IR','ZAN','abhar-145034','ابهر','Abhar',69889,145034),
+('IR','ARD','abi-beyglu-145125','آبی بيگلو','Abi Beyglu',6515,145125),
+('IR','HAM','abd-ol-mow-men-145154','عبد المومن','''Abd ol Mow''men',1008,145154),
+('IR','KHZ','abdol-khan-e-pa-in-145195','الوان','''Abdol Khan-e Pa''in',3061,145195),
+('IR','ILM','abdanan-145233','آبدانان','Abdanan',23946,145233),
+('IR','BUS','abdan-145234','آبدان','Abdan',6827,145234),
+('IR','MAZ','abas-abad-145303','عباس آباد','''Abas Abad',13482,145303),
+('IR','MAZ','abbasa-145381','عباسا','''Abbasa',2685,145381),
+('IR','LOR','ab-bariki-145392','آب باریکی','Ab Bariki',1648,145392),
+('IR','ZAN','abbar-145407','آب بر','Abbar',8091,145407),
+('IR','SEM','abarsenj-145424','ابرسج','Abarsenj',1004,145424),
+('IR','YAZ','abarkuh-145427','ابر قو','Abarkuh',27524,145427),
+('IR','FRS','abadeh-145449','آباده','Abadeh',59116,145449),
+('IR','FRS','abadeh-abgarm-145453','آباده آبگرم','Abadeh Abgarm',1643,145453),
+('IR','KHZ','abadan-145459','آبادان','Abadan',231476,145459),
+('IR','BUS','shahrabad-145461','آباد','Shahrabad',3787,145461),
+('IR','FRS','karun-381511','کارون','Karun',1109,381511),
+('IR','HRZ','zehuki-381546','زهوکی','Zehuki',4451,381546),
+('IR','MAZ','ojaksar-385044','اجاكسر','Ojaksar',3511,385044),
+('IR','MAZ','pa-in-mahalleh-ye-aliabad-385045','بالا بابل پشت','Pa''in Mahalleh-ye ''Aliabad',1539,385045),
+('IR','MAZ','miandasht-385047','مياندشت','Miandasht',2132,385047),
+('IR','MAZ','kalleh-bast-385048','كله بست','Kalleh Bast',7889,385048),
+('IR','MAZ','dunchal-385061','دونچال','Dunchal',1393,385061),
+('IR','MAZ','kuhi-kheyl-385068','كوهی خيل','Kuhi Kheyl',2242,385068),
+('IR','MAZ','anar-marz-385069','انار مرز','Anar Marz',1428,385069),
+('IR','MAZ','ramnet-385085','رمتت','Ramnet',2265,385085),
+('IR','MAZ','arateh-385189','آبو خِيل اَرَطِه','Arateh',10327,385189),
+('IR','MAZ','tazehabad-kola-385215','تازه آباد کولا','Tazehabad Kola',1807,385215),
+('IR','MAZ','tabaqdeh-385216','طبقده','Tabaqdeh',2023,385216),
+('IR','MAZ','ab-bandan-sar-385236','آب بندان سر','Ab Bandan Sar',2040,385236),
+('IR','MAZ','badeleh-385238','بادله','Badeleh',1890,385238),
+('IR','MAZ','atrab-385242','اطرب','Atrab',1558,385242),
+('IR','MAZ','zenivand-385253','زنیوند','Zenivand',1484,385253),
+('IR','GLS','talur-385261','تالور','Talur',1067,385261),
+('IR','MAZ','bala-deza-385311','بالا دزا','Bala Deza',3632,385311),
+('IR','MAZ','pa-in-deza-385312','پائين دزا','Pa''in Deza',1945,385312),
+('IR','MAZ','behzad-kola-385398','بهزاد كلا','Behzad Kola',1046,385398),
+('IR','MAZ','dang-sarak-385401','دنگ سرك','Dang Sarak',1049,385401),
+('IR','MAZ','kiasar-385443','كياسر','Kiasar',3384,385443),
+('IR','MAZ','mehleban-385486','مهلبان','Mehleban',1780,385486),
+('IR','MAZ','asram-385569','اسرم','Asram',4712,385569),
+('IR','MAZ','owmal-385570','اومال','Owmal',1198,385570),
+('IR','MAZ','zagh-marz-386346','زاغ مرز','Zagh Marz',5932,386346),
+('IR','MAZ','ya-qub-lengeh-386755','يعقوب لنگه','Ya''qub Lengeh',1246,386755),
+('IR','KER','dowlatabad-388425','دولت آباد','Dowlatabad',4196,388425),
+('IR','WAZ','bilevar-388502','بيل وار','Bilevar',1139,388502),
+('IR','KHZ','saroleh-388513','Saroleh','Saroleh',1027,388513),
+('IR','EAZ','malekzadeh-388550','ملک زاده','Malekzadeh',1122,388550),
+('IR','EAZ','vanlujeq-388567','وانلو جق','Vanlujeq',1302,388567),
+('IR','EAZ','qarajeh-ye-feyzollah-388568','قراجه فضل اله','Qarajeh-ye Feyzollah',1842,388568),
+('IR','EAZ','sufian-388686','سوفيّان','Sufian',9963,388686),
+('IR','EAZ','abish-ahmad-389530','آبِش اَحمَد','Abish Ahmad',2715,389530),
+('IR','ILM','salehabad-389871','صالح آباد','Salehabad',1751,389871),
+('IR','ILM','asmanabad-389875','آسمان آباد','Asmanabad',6280,389875),
+('IR','KER','kuh-sefid-390054','کوه سفید','Kuh Sefid',2850,390054),
+('IR','KER','bezenjan-390093','بزنجان','Bezenjan',4517,390093),
+('IR','FRS','shamsabad-e-borzu-390197','شمس آباد برزو','Shamsabad-e Borzu',1281,390197),
+('IR','FRS','tarbor-e-lay-bisheh-390234','تربر لای بیشه','Tarbor-e Lay Bisheh',1491,390234),
+('IR','FRS','jaresqan-390236','جرسقان','Jaresqan',1539,390236),
+('IR','FRS','vazirabad-390238','وزیر آباد','Vazirabad',2977,390238),
+('IR','FRS','nasrabad-390245','نصر آباد','Nasrabad',4293,390245),
+('IR','FRS','tizab-391557','تیر آب','Tizab',1609,391557),
+('IR','KER','deh-pish-e-sofla-400389','ده پیش سفلی','Deh Pish-e Sofla',1719,400389),
+('IR','GIL','pareh-sar-400751','پره سر','Pareh Sar',8016,400751),
+('IR','MRK','parandak-400756','رحیم آباد','Parandak',6886,400756),
+('IR','GIL','gilova-400762','بالا محله','Gilova',1706,400762),
+('IR','ALB','mohammad-shahr-400771','محمد شهر','Mohammad Shahr',119418,400771),
+('IR','ALB','garmdarreh-400773','گرمدره','Garmdarreh',22726,400773),
+('IR','THR','ahmad-abad-mostufi-400791','شهرک احمد آباد مستوفی','Ahmad Abad Mostufi',14077,400791),
+('IR','CHB','karan-400806','کرن','Karan',4049,400806),
+('IR','THR','baqershahr-400809','باقر آباد باقراف','Baqershahr',65388,400809),
+('IR','GLS','yolmeh-salian-400817','يلمه ساليان','Yolmeh Salian',4103,400817),
+('IR','THR','qiamdasht-400833','شاهين شَهر','Qiamdasht',36446,400833),
+('IR','WAZ','avajiq-401107','كَليسا كَندی','Avajiq',1663,401107),
+('IR','WAZ','showt-401118','شوط','Showt',25381,401118),
+('IR','WAZ','keshmesh-tappeh-401124','كِشمِش تَپِّه','Keshmesh Tappeh',4046,401124),
+('IR','WAZ','pasak-e-sofla-401177','پسک سفلی','Pasak-e Sofla',2126,401177),
+('IR','WAZ','rahal-401182','رهال','Rahal',1056,401182),
+('IR','FRS','pasargad-401202','Pāsārgād','Pasargad',29825,401202),
+('IR','WAZ','haq-401247','هق','Haq',1017,401247),
+('IR','RKH','forutaqeh-401299','تربقان','Forutaqeh',1515,401299),
+('IR','ISF','mohammadabad-401344','محمد آباد','Mohammadabad',2125,401344),
+('IR','ILM','lumar-401555','شهرک لومار','Lumar',2696,401555),
+('IR','EAZ','ravesht-e-bozorg-401698','بویوک روشت','Ravesht-e Bozorg',2231,401698),
+('IR','EAZ','zavosht-401701','زاوشت','Zavosht',4539,401701),
+('IR','THR','reyeh-402306','ریه','Reyeh',1532,402306),
+('IR','KER','shahrak-e-pabedana-403126','Shahrak-e Pābedānā','Shahrak-e Pabedana',6503,403126),
+('IR','KER','golbaf-403529','گلباف','Golbaf',9205,403529),
+('IR','BUS','dowrahak-403541','دوراهک','Dowrahak',4852,403541),
+('IR','FRS','ardakan-403656','اردکان','Ardakan',14633,403656),
+('IR','KHZ','arvand-kenar-403707','Arvand Kenār','Arvand Kenar',11173,403707),
+('IR','THR','najmabad-404424','نجم آباد','Najmabad',2249,404424),
+('IR','THR','deh-kheyr-404426','ده خير','Deh Kheyr',2249,404426),
+('IR','THR','shahrak-e-qamsar-404434','شهرک قمصر','Shahrak-e Qamsar',5717,404434),
+('IR','THR','qal-eh-sheykh-404437','قلعه شيخ','Qal''eh Sheykh',3078,404437),
+('IR','THR','tabazin-404444','تبائين','Tabazin',1182,404444),
+('IR','THR','turquzabad-404452','طورقوز آباد','Turquzabad',2278,404452),
+('IR','THR','bahramabad-404506','بهرام آباد','Bahramabad',1889,404506),
+('IR','THR','shahrak-e-shatarreh-404509','شاطَرِه','Shahrak-e Shatarreh',7150,404509),
+('IR','THR','eslamabad-404552','اسلام آباد','Eslamabad',4820,404552),
+('IR','THR','vahidiyeh-404592','دوشا','Vahidiyeh',33249,404592),
+('IR','THR','khosrowabad-404743','خسرو آباد','Khosrowabad',1083,404743),
+('IR','THR','mehrabad-404840','مهر آباد','Mehrabad',5278,404840),
+('IR','THR','deh-e-torkaman-405222','ترکمن ده همسین','Deh-e Torkaman',1127,405222),
+('IR','THR','sa-idabad-405225','سعيد آباد','Sa''idabad',7200,405225),
+('IR','THR','eslamabad-405254','اسلام آباد','Eslamabad',9999,405254),
+('IR','THR','mahmudabad-405256','محمود آباد','Mahmudabad',1917,405256),
+('IR','THR','qal-eh-now-khaleseh-405265','قلعه نو','Qal''eh Now Khaleseh',5352,405265),
+('IR','CHB','deh-e-zak-406163','دزك','Deh-e Zak',2942,406163),
+('IR','CHB','gahru-406165','گهرو','Gahru',6263,406165),
+('IR','SBL','bent-406425','بنت','Bent',5822,406425),
+('IR','THR','shahrak-e-baba-salman-406451','شهرک بابا سلمان','Shahrak-e Baba Salman',4859,406451),
+('IR','THR','razkan-406460','رزكان','Razkan',5460,406460),
+('IR','THR','eskaman-406461','اسكمان','Eskaman',2143,406461),
+('IR','THR','nasir-abaad-406462','نصير آباد','Nasir Abaad',28644,406462),
+('IR','THR','firuzbahram-406463','فيروز بَهرام','Firuzbahram',1103,406463),
+('IR','THR','shahedshahr-406472','شاهدشهر','Shahedshahr',25544,406472),
+('IR','THR','fararat-406475','فرارت','Fararat',4856,406475),
+('IR','THR','yusefabad-406476','يوسف آباد','Yusefabad',5308,406476),
+('IR','THR','peyghambar-406483','محمّد آباد پيغمبر','Peyghambar',1980,406483),
+('IR','THR','ovrin-406487','اورين','Ovrin',17577,406487),
+('IR','THR','deh-hasan-406488','ده حسن','Deh Hasan',1312,406488),
+('IR','THR','eqbaliyeh-406993','اقباليّه','Eqbaliyeh',36709,406993),
+('IR','ILM','badreh-415694','بدره','Badreh',0,415694),
+('IR','ISF','zafreh-417469','زفره','Zafreh',4000,417469),
+('IR','ISF','shahin-shahr-417472','شاهین شهر','Shahin Shahr',173329,417472),
+('IR','ISF','bejgerd-417616','بجگرد','Bejgerd',1511,417616),
+('IR','ISF','ozvar-417666','ازوار','Ozvar',1553,417666),
+('IR','ISF','zudan-417698','زودان','Zudan',1063,417698),
+('IR','ISF','jowlarestan-417807','جولرستان','Jowlarestan',2473,417807),
+('IR','ISF','esfahran-418145','اسفهران','Esfahran',1026,418145),
+('IR','ISF','dashtchi-418152','Dashtchī','Dashtchi',1965,418152),
+('IR','ISF','koruj-418310','کروج','Koruj',1654,418310),
+('IR','ISF','mehdiabad-418359','مهدی آباد','Mehdiabad',1028,418359),
+('IR','ISF','tonderan-418412','تندران','Tonderan',1109,418412),
+('IR','ISF','zefreh-418415','زفره','Zefreh',1750,418415),
+('IR','ISF','zazeran-418416','زازران','Zazeran',7962,418416),
+('IR','ISF','zarrin-shahr-418418','زرّین شهر','Zarrin Shahr',55817,418418),
+('IR','ISF','varnamkhvast-418444','ورنامخواست','Varnamkhvast',18700,418444),
+('IR','ISF','tiranchi-418445','تیرانچی','Tiranchi',3122,418445),
+('IR','ISF','tiran-418446','تیران','Tiran',21703,418446),
+('IR','ISF','tad-418452','طاد','Tad',3740,418452),
+('IR','ISF','sin-418463','سین','Sin',5495,418463),
+('IR','ISF','shorudan-418480','شرودان','Shorudan',3114,418480),
+('IR','ISF','shahpurabad-418484','شاهپور آباد','Shahpurabad',5915,418484),
+('IR','CHB','sefid-dasht-418500','سفيد دشت','Sefid Dasht',5471,418500),
+('IR','ISF','sedeh-lanjan-418503','سده','Sedeh Lanjan',19101,418503),
+('IR','ISF','baharan-shahr-418512','بهاران شهر','Baharan Shahr',11284,418512),
+('IR','ISF','sagzi-418513','سجزی','Sagzi',5063,418513),
+('IR','ISF','rehnan-418521','رنان','Rehnan',49143,418521),
+('IR','ISF','shahreza-418533','شهرضا','Shahreza',134952,418533),
+('IR','ISF','goldasht-418556','گلدشت','Goldasht',25235,418556),
+('IR','ISF','qahjavarestan-418569','قهجاورستان','Qahjavarestan',9712,418569),
+('IR','ISF','qahderijan-418571','قهدریجان','Qahderijan',29392,418571),
+('IR','ISF','pir-bakran-418575','پیر بکران','Pir Bakran',13469,418575),
+('IR','ISF','pelarat-418580','پلارت','Pelarat',1289,418580),
+('IR','ISF','imanshahr-418593','اشترجان','Imanshahr',14633,418593),
+('IR','ISF','nasrabad-418603','ناصِر آباد','Nasrabad',6425,418603),
+('IR','ISF','najafabad-418606','نجف آباد','Najafabad',235281,418606),
+('IR','ISF','mohammadiyeh-418620','محمّدیه','Mohammadiyeh',1358,418620),
+('IR','ISF','mobarakeh-418625','مبارکه','Mobarakeh',69449,418625),
+('IR','ISF','mirabad-418628','میر آباد','Mirabad',2758,418628),
+('IR','ISF','madiseh-418658','مدیسه','Madiseh',1395,418658),
+('IR','ISF','largan-418671','لارگان','Largan',2259,418671),
+('IR','ISF','kushk-418678','کوشک','Kushk',13248,418678),
+('IR','ISF','kuhpayeh-418681','کوهپایه','Kuhpayeh',5518,418681),
+('IR','ISF','komeshcheh-418689','کمشچه','Komeshcheh',5100,418689),
+('IR','ISF','khowrzuq-418699','خورزوق','Khowrzuq',29154,418699),
+('IR','ISF','khomeyni-shahr-418710','خمینی شهر','Khomeyni Shahr',277334,418710),
+('IR','ISF','khatunabad-418711','خاتون آباد','Khatunabad',2039,418711),
+('IR','ISF','kelishad-va-sudarjan-418723','کلیشاد','Kelishad va Sudarjan',25635,418723),
+('IR','ISF','karuyeh-418727','کارویه','Karuyeh',1031,418727),
+('IR','ISF','kafoshan-418739','کافشان','Kafoshan',1655,418739),
+('IR','ISF','jujil-418744','جوجیل','Jujil',6327,418744),
+('IR','ISF','jowzdan-418748','جوزدان','Jowzdan',6998,418748),
+('IR','ISF','jalalabad-418760','جلال آباد','Jalalabad',4056,418760),
+('IR','ISF','huyeh-418775','هویه','Huyeh',2698,418775),
+('IR','ISF','haratom-418805','هراتم','Haratom',1335,418805),
+('IR','ISF','haftshuyeh-418819','هفت شوئیه','Haftshuyeh',1248,418819),
+('IR','ISF','habibabad-418820','حبیب آباد','Habibabad',9491,418820),
+('IR','ISF','gorgab-418824','گرگاب','Gorgab',9690,418824),
+('IR','ISF','gaz-e-borkhar-418830','گز','Gaz-e Borkhar',24433,418830),
+('IR','ISF','kavian-418831','کاویان','Kavian',1550,418831),
+('IR','ISF','gavart-418832','گورت','Gavart',4810,418832),
+('IR','ISF','karkevand-418834','کرکوند','Karkevand',7058,418834),
+('IR','ISF','fulad-shahr-418838','فولاد شهر','Fulad Shahr',88426,418838),
+('IR','CHB','faradonbeh-418850','فرادنبه','Faradonbeh',13317,418850),
+('IR','ISF','falavarjan-418851','فلاورجان','Falavarjan',49843,418851),
+('IR','ISF','fakhrabad-418852','فخر آباد','Fakhrabad',1862,418852),
+('IR','ISF','eshkavand-418857','اشکاوند','Eshkavand',2557,418857),
+('IR','ISF','esfahanak-418861','اصفهانک','Esfahanak',4414,418861),
+('IR','ISF','isfahan-418863','أصفهان','Isfahan',1547164,418863),
+('IR','ISF','dowlatabad-418868','دولت آباد','Dowlatabad',33607,418868),
+('IR','ISF','dizicheh-418875','دیزیچه','Dizicheh',18935,418875),
+('IR','ISF','deh-e-sorkh-418879','ده سرخ','Deh-e Sorkh',3713,418879),
+('IR','ISF','dastgerd-418886','دستگرد','Dastgerd',17775,418886),
+('IR','ISF','dastgerd-e-mehr-avaran-418888','دستگرد مهر آوران','Dastgerd-e Mehr Avaran',1004,418888),
+('IR','ISF','dargan-418892','دارگان','Dargan',2409,418892),
+('IR','ISF','dorcheh-piaz-418896','Dorcheh Pīāz','Dorcheh Piaz',37462,418896),
+('IR','ISF','charmahin-418905','چرمهین','Charmahin',13732,418905),
+('IR','ISF','chamgordan-418911','چمگردان','Chamgordan',15574,418911),
+('IR','ISF','baharestan-418943','بهارستان','Baharestan',106433,418943),
+('IR','ISF','bagh-malek-418944','باغ ملک','Bagh Malek',1901,418944),
+('IR','ISF','abrisham-418950','ابریشم','Abrisham',20000,418950),
+('IR','ISF','asgharabad-418957','اصغر آباد','Asgharabad',6876,418957),
+('IR','ISF','ahmadabad-418982','احمد آباد','Ahmadabad',1325,418982),
+('IR','FRS','chah-kabkan-433425','چاه کبکان','Chah Kabkan',2150,433425),
+('IR','YAZ','dehshir-434104','دهشير','Dehshir',1320,434104),
+('IR','WAZ','badalabad-443190','بدل آباد','Badalabad',9256,443190),
+('IR','THR','lomabad-448138','لم آباد','Lomabad',3227,448138),
+('IR','THR','eslamshahr-449504','اسلامشهر','Eslamshahr',450000,449504),
+('IR','RKH','shahrak-e-bakharz-1112446','شهرک باخرز','Shahrak-e Bakharz',0,1112446),
+('IR','SBL','zabol-1113217','زابل','Zabol',121989,1113217),
+('IR','SBL','ramin-1113341','رمین','Ramin',3821,1113341),
+('IR','SBL','sirkan-1114538','سیرکان','Sirkan',2196,1114538),
+('IR','SBL','zangiyan-1159293','زنگیان','Zangiyan',4159,1159293),
+('IR','SBL','zahedan-1159301','زاهدان','Zahedan',551980,1159301),
+('IR','SBL','zehak-1159302','زهک','Zehak',14324,1159302),
+('IR','SBL','mehrestan-1159306','زابلی','Mehrestan',12245,1159306),
+('IR','SBL','turdan-1159346','طوردان','Turdan',2008,1159346),
+('IR','RKH','torbat-e-jam-1159362','تربت جام','Torbat-e Jam',58928,1159362),
+('IR','SBL','tis-1159368','تيس','Tis',6348,1159368),
+('IR','RKH','taybad-1159384','تايباد','Taybad',37513,1159384),
+('IR','SBL','suran-1159431','سوران','Suran',0,1159431),
+('IR','RKH','shurak-e-maleki-1159522','شورک ملکی','Shurak-e Maleki',1151,1159522),
+('IR','SBL','shamsabad-1159584','شمس آباد','Shamsabad',1774,1159584),
+('IR','SBL','shahr-deraz-1159605','شهردراز','Shahr Deraz',4618,1159605),
+('IR','SBL','sarzeh-1159672','سرزه','Sarzeh',2282,1159672),
+('IR','SBL','sar-kahuran-1159691','سرکهوران','Sar Kahuran',1450,1159691),
+('IR','SBL','sarbaz-1159709','سرباز','Sarbaz',2020,1159709),
+('IR','SBL','saravan-1159713','سراوان','Saravan',60014,1159713),
+('IR','RKH','sarakhs-1159716','سرخس','Sarakhs',46499,1159716),
+('IR','RKH','sangan-1159729','سنگان','Sangan',12443,1159729),
+('IR','SBL','rasak-1159836','راسک','Rasak',10115,1159836),
+('IR','SBL','qasr-e-qand-1159877','Qaşr-e Qand','Qasr-e Qand',37722,1159877),
+('IR','SBL','qasr-e-qand-1159884','قصر قند','Qasr-e Qand',0,1159884),
+('IR','SBL','pishin-1159975','پیشین','Pishin',16011,1159975),
+('IR','SBL','pir-sohrab-1159981','پیر سهراب','Pir Sohrab',1081,1159981),
+('IR','SBL','pasabandar-1160024','پسا بندر','Pasabandar',1093,1160024),
+('IR','SBL','parud-1160029','پارود','Parud',2997,1160029),
+('IR','SBL','nukabad-1160088','نوک آباد','Nukabad',5261,1160088),
+('IR','SBL','nikshahr-1160110','نیکشهر','Nikshahr',17000,1160110),
+('IR','SKH','nehbandan-1160120','نهبندان','Nehbandan',18304,1160120),
+('IR','SBL','negur-1160121','نگور','Negur',5670,1160121),
+('IR','SBL','mohammadabad-1160239','محمّد آباد','Mohammadabad',0,1160239),
+('IR','SBL','mohammadan-1160245','محمّد آباد','Mohammadan',10302,1160245),
+('IR','SBL','mirjaveh-1160258','میرجاوه','Mirjaveh',9359,1160258),
+('IR','RKH','laj-1160402','لاج','Laj',3038,1160402),
+('IR','SBL','kohak-1160463','کهک','Kohak',3201,1160463),
+('IR','SBL','konarak-1160500','کنارک','Konarak',43258,1160500),
+('IR','RKH','khvaf-1160544','خواف','Khvaf',33189,1160544),
+('IR','SBL','khash-1160571','خاش','Khash',69603,1160571),
+('IR','RKH','kandakli-1160672','کندکلی','Kandakli',1518,1160672),
+('IR','SBL','jalq-1160907','خوشاب','Jalq',18098,1160907),
+('IR','SBL','iranshahr-1160939','ايرانشهر','Iranshahr',131232,1160939),
+('IR','SBL','hiduj-1160945','هیدوج','Hiduj',1674,1160945),
+('IR','SBL','hoseynabad-1160967','حسین آباد','Hoseynabad',1166,1160967),
+('IR','SBL','hichan-1160984','هیچان','Hichan',2905,1160984),
+('IR','SBL','azmanabad-1161030','آزمناباد','Azmanabad',1959,1161030),
+('IR','SKH','hajjiabad-1161048','حاجی آباد','Hajjiabad',0,1161048),
+('IR','RKH','gonbadli-1161107','گنبدلی','Gonbadli',1877,1161107),
+('IR','SBL','aspich-1161265','آسفیج','Aspich',2819,1161265),
+('IR','SBL','espakeh-1161269','اسپکه','Espakeh',4719,1161269),
+('IR','SBL','dust-mohammad-khan-1161297','دوست محمد','Dust Mohammad Khan',6621,1161297),
+('IR','SBL','deh-mir-1161369','ده میر','Deh Mir',2803,1161369),
+('IR','SBL','chah-e-jamal-1161567','چاه جمال','Chah-e Jamal',8144,1161567),
+('IR','SBL','bonjar-1161633','بنجار','Bonjar',3760,1161633),
+('IR','SBL','beris-1161664','بریس پائین','Beris',4488,1161664),
+('IR','SBL','bazman-1161681','بزمان','Bazman',5192,1161681),
+('IR','SBL','bansont-1161711','بانسنت','Bansont',1824,1161711),
+('IR','SBL','chabahar-1161724','بندر چابهار','Chabahar',47287,1161724),
+('IR','SBL','bampur-1161735','بمپور','Bampur',12217,1161735),
+('IR','SBL','ashar-1161800','آشار','Ashar',3786,1161800),
+('IR','SBL','ahmadabad-1161877','احمد آباد','Ahmadabad',1084,1161877),
+('IR','SBL','afshan-1161885','افشان','Afshan',1459,1161885),
+('IR','SBL','adimi-1161887','ادیمی','Adimi',0,1161887),
+('IR','SBL','abtar-1161888','ابتر','Abtar',3089,1161888),
+('IR','KHZ','daghagheleh-6640345','دغاغله','Daghagheleh',5116,6640345),
+('IR','KHZ','shahrak-e-madani-6648094','شهرک آیت الله مدنی','Shahrak-e Madani',6089,6648094),
+('IR','KHZ','chamran-6648117','شهرک شهید چمران','Chamran',33505,6648117),
+('IR','KHZ','sheyban-6648621','شیبان','Sheyban',36374,6648621),
+('IR','HRZ','dayrestan-6649516','ديرستان','Dayrestan',1764,6649516),
+('IR','HRZ','shahrak-e-namju-6649570','شهرک شهید نامجو','Shahrak-e Namju',1438,6649570),
+('IR','HRZ','now-band-6650424','نو بند جدید','Now Band',1436,6650424),
+('IR','HRZ','eslamabad-6650432','اسلام آباد','Eslamabad',5618,6650432),
+('IR','SBL','pozm-e-tiab-6650725','پزم تیاب','Pozm-e Tiab',2912,6650725),
+('IR','BUS','vahdattiyeh-6651758','وحدتیه','Vahdattiyeh',11222,6651758),
+('IR','FRS','mahmudabad-e-do-dang-6653042','محمودآباد دو دانگ','Mahmudabad-e Do Dang',1353,6653042),
+('IR','FRS','shahr-e-sadra-6653052','شهر جدید صدرا','Shahr-e Sadra',122226,6653052),
+('IR','HRZ','bostanu-6654157','بستانو','Bostanu',1753,6654157),
+('IR','HRZ','tazian-6654309','تازيان','Tazian',4263,6654309),
+('IR','HRZ','sarzeh-6654581','سرزه','Sarzeh',1633,6654581),
+('IR','ALB','ramjin-6657069','رامجین','Ramjin',1999,6657069),
+('IR','ALB','aliabad-guneh-6657077','حسن آباد','''Aliabad Guneh',3256,6657077),
+('IR','ALB','shahrak-e-nahal-va-bazr-6657192','شهرک اصلاح بذر','Shahrak-e Nahal Va Bazr',2001,6657192),
+('IR','THR','fardis-6657205','فردیس','Fardis',181174,6657205),
+('IR','ALB','qasemabad-e-gorji-6657410','قاسم آباد گرجی','Qasemabad-e Gorji',1928,6657410),
+('IR','MRK','mamuniyeh-6657461','مامونیه','Mamuniyeh',21814,6657461),
+('IR','THR','parand-6659672','شهر جدید پرند','Parand',97464,6659672),
+('IR','ISF','majlesi-6659743','شهر جدید مجلسی','Majlesi',9363,6659743),
+('IR','QAZ','bidestan-6659958','بیدستان','Bidestan',18060,6659958),
+('IR','QAZ','mohammadiyeh-6659981','زیباشهر','Mohammadiyeh',90513,6659981),
+('IR','QAZ','shenqar-6660031','شنقر','Shenqar',1823,6660031),
+('IR','QOM','shahrak-e-pardisan-6663569','شهرک الهیه','Shahrak-e Pardisan',100000,6663569),
+('IR','ISF','hajjiabad-6666958','حاجی آباد','Hajjiabad',3448,6666958),
+('IR','ISF','rezvanshahr-6672361','رضوانشهر','Rezvanshahr',3606,6672361),
+('IR','ISF','nehzatabad-6672372','نهضت آباد','Nehzatabad',3016,6672372),
+('IR','THR','sabbashahr-6672633','صباشهر','Sabbashahr',53971,6672633),
+('IR','THR','nasim-shahr-6672634','اکبر آباد','Nasim Shahr',200393,6672634),
+('IR','RKH','kholqabad-6678741','خلق آباد','Kholqabad',2857,6678741),
+('IR','THR','pardis-6681051','جديد پرديس','Pardis',114249,6681051),
+('IR','BUS','bast-e-malakhi-6683619','بس ملخی','Bast-e Malakhi',1058,6683619),
+('IR','EAZ','ilkhchi-6686961','ایلخچی','Ilkhchi',16574,6686961),
+('IR','EAZ','azarshahr-6686970','آذرشهر','Azarshahr',44887,6686970),
+('IR','ILM','mehr-6687174','شهرک مهر','Mehr',1060,6687174),
+('IR','ILM','ban-rahman-6687190','بان رحمان ملکشاهی','Ban Rahman',1070,6687190),
+('IR','EAZ','owghan-6689571','اوغان','Owghan',1554,6689571),
+('IR','EAZ','alan-6689616','آلان','Alan',1759,6689616),
+('IR','EAZ','zarnaq-6703845','زرنق','Zarnaq',2415,6703845),
+('IR','ILM','sartaf-6708497','شهرک سرطاف','Sartaf',1413,6708497),
+('IR','KSH','tazehabad-6709138','تازه آباد','Tazehabad',0,6709138),
+('IR','ILM','delgosha-6711214','دلکشاد','Delgosha',1819,6711214),
+('IR','ILM','abbasabad-6719944','عبّاس آباد','''Abbasabad',1695,6719944),
+('IR','GIL','poshteh-6743601','پشته','Poshteh',1226,6743601),
+('IR','MRK','mahajeran-6746932','محدوده شهر جدید مهاجران','Mahajeran',20346,6746932),
+('IR','MRK','javerseyan-6746969','جاورسیان','Javerseyan',4993,6746969),
+('IR','ISF','kashan-6861211','كاشان','Kashan',304487,6861211),
+('IR','FRS','jahadabad-6869240','تلمبه قهرمانی','Jahadabad',1159,6869240),
+('IR','KER','jiroft-6925362','جیرفت','Jiroft',130429,6925362),
+('IR','KER','rudbar-6928551','اسلام آباد','Rudbar',0,6928551),
+('IR','HRZ','jakdan-6929734','جکدان','Jakdan',1239,6929734),
+('IR','HAM','famast-6949363','گاماسب','Famast',1081,6949363),
+('IR','KER','sarras-6959900','سر رائس','Sarras',2350,6959900),
+('IR','KER','kahnuj-6961608','کهنوج','Kahnuj',52624,6961608),
+('IR','FRS','jannat-shahr-6976849','جنت شهر','Jannat Shahr',13598,6976849),
+('IR','FRS','shahrak-e-emam-6980566','بلاکستون','Shahrak-e Emam',3840,6980566),
+('IR','HRZ','sar-chahan-e-janubi-6981494','سر چاهان','Sar Chahan-e Janubi',2250,6981494),
+('IR','SBL','abadan-7028258','آبادان','Abadan',2763,7028258),
+('IR','SBL','aliabad-7028291','علی آباد','''Aliabad',2616,7028291),
+('IR','SBL','hushak-7052881','هوشک','Hushak',3578,7052881),
+('IR','RKH','jalilabad-7075197','جلیل آباد','Jalilabad',169,7075197),
+('IR','RKH','golbahar-7082152','سایبان گلی','Golbahar',36877,7082152),
+('IR','SEM','mahdishahr-7100777','سنگسر','Mahdishahr',21000,7100777),
+('IR','SBL','galmurti-7102155','دلگان','Galmurti',10292,7102155),
+('IR','MAZ','shalash-7108455','شالاش','Shalash',7384,7108455),
+('IR','GLS','ziarat-7108588','زیارت','Ziarat',2280,7108588),
+('IR','GLS','aq-qala-7329809','آق قلا','Aq Qala',35116,7329809),
+('IR','KHZ','kuy-e-montazeri-7416827','کوی منتظری','Kuy-e Montazeri',1860,7416827),
+('IR','KHZ','kut-e-navaser-7416833','کوت النواصر','Kut-e Navaser',5560,7416833),
+('IR','GIL','barehsar-7431227','برسر','Barehsar',1612,7431227),
+('IR','FRS','qa-emiyeh-7451195','قائمیه','Qa''emiyeh',26918,7451195),
+('IR','THR','mojtame-e-maskuni-ye-namju-7465130','مجتمع مسکونی نامجو','Mojtame''-e Maskuni-ye Namju',22990,7465130),
+('IR','ISF','manzariyeh-7492424','عمرو آباد','Manzariyeh',7164,7492424),
+('IR','ISF','kharmanan-7521152','خرمنان','Kharmanan',1674,7521152),
+('IR','MAZ','izad-shahr-7637486','شهرك ایزد شهر','Izad Shahr',7439,7637486),
+('IR','THR','shahrak-e-ala-in-8080737','شهرک علائين','Shahrak-e ''Ala''in',21594,8080737),
+('IR','BUS','lavardeh-8375841','منطقه لاور','Lavardeh',297,8375841),
+('IR','KHZ','darvisheh-8384992','درویش آباد','Darvisheh',11820,8384992),
+('IR','THR','vahidiyeh-8420881','وحيديه','Vahidiyeh',33249,8420881),
+('IR','THR','khabarabad-8421803','خبر آباد','Khabarabad',17267,8421803),
+('IR','KHZ','bandar-e-emam-khomeyni-8521444','بندر امام خمينى','Bandar-e Emam Khomeyni',78353,8521444),
+('IR','BUS','ali-shahr-8522943','عالی شهر','''Ali Shahr',23178,8522943),
+('IR','ALB','mehestan-8535197','شهر جدید مهستان','Mehestan',85200,8535197),
+('IR','THR','ab-ali-8595861','آبعلی','Ab''ali',2758,8595861),
+('IR','SBL','moradabad-komb-8717127','مراد آباد','Moradabad Komb',12906,8717127),
+('IR','MAZ','ne-matabad-8729946','نعمت آباد','Ne''matabad',2597,8729946),
+('IR','GIL','gilandeh-8730059','گيلانده','Gilandeh',4273,8730059),
+('IR','MAZ','qa-em-shahr-9260882','قائم شهر','Qa''em Shahr',0,9260882),
+('IR','THR','pakdasht-9478811','مامازان','Pakdasht',236319,9478811),
+('IR','SKH','boshruyeh-9480732','بشرویه','Boshruyeh',15318,9480732),
+('IR','ARD','givi-9514746','گیوی','Givi',7101,9514746),
+('IR','THR','rey-9533872','الري','Rey',0,9533872),
+('IR','YAZ','bahabad-9533956','بهاباد','Bahabad',0,9533956),
+('IR','THR','andisheh-10865375','اندیشه','Andisheh',116062,10865375),
+('IR','THR','shahrak-e-ja-fariyeh-10944777','شهرک جعفریه','Shahrak-e Ja''fariyeh',9452,10944777),
+('IR','MAZ','mazga-11469996','مزگا','Mazga',1319,11469996),
+('IR','THR','kahrizak-11980175','کهريزک','Kahrizak',37527,11980175),
+('IR','RKH','hoseynabad-e-qorqi-12153294','حسین آباد قرقی','Hoseynabad-e Qorqi',13644,12153294),
+('IR','RKH','qorqi-ye-sofla-12153299','قرقی سفلی','Qorqi-ye Sofla',11952,12153299),
+('IR','THR','nasimshahr-13405749','Nasimshahr','Nasimshahr',200393,13405749),
+('IR','MAZ','dabudasht-13535724','دابودشت','Dabudasht',1758,13535724),
+('IR','THR','baghestan-13562246','Bāghestān','Baghestan',83934,13562246),
+('IR','ISF','zibashahr-13590366','خولنجان','Zibashahr',10200,13590366),
+('IR','MAZ','khalil-shahr-13590593','Khalīl Shahr','Khalil Shahr',11032,13590593),
+('IR','EAZ','sahand-13631338','سهند','Sahand',82494,13631338),
+('IR','THR','kuhsar-13631356','كوهسار','Kuhsar',10940,13631356),
+('IR','FRS','bavanat-13631698','بوانات','Bavanat',9776,13631698),
+('IR','MAZ','mahdasht-13645281','مهدشت','Mahdasht',4220,13645281),
+('IR','HRZ','siyahu-13645355','سياهو','Siyahu',1015,13645355),
+('IR','BUS','jazireh-ye-shif-13645631','جزيره شيف','Jazireh-ye Shif',3969,13645631),
+('IR','SBL','kafeh-baluchi-13645712','کافه بلوچی','Kafeh Baluchi',1975,13645712),
+('IR','THR','safadasht-13645766','صفادشت','Safadasht',32476,13645766),
+('IR','RKH','gorji-ye-sofla-13664979','گرجی سفلی','Gorji-ye Sofla',15163,13664979),
+('IR','THR','golsar-13665053','گلسار','Golsar',13745,13665053),
+('IR','QOM','qanavat-13665079','قنوات','Qanavat',11667,13665079),
+('IR','RKH','mohammadabad-13680008','محمداباد','Mohammadabad',4548,13680008),
+('IQ','DHK','zawitah-89482','zawytە','Zawitah',0,89482),
+('IQ','DHK','zaxo-89570','زاخو','Zaxo',95052,89570),
+('IQ','BAS','umm-qasr-89824','ام قصر','Umm Qasr',107620,89824),
+('IQ','SAL','tuz-khurmatu-90026','توز خورماتو','Tuz Khurmatu',120712,90026),
+('IQ','SAL','tikrit-90150','تكريت','Tikrit',42477,90150),
+('IQ','KRK','tazah-khurmatu-90199','تازة خورماتو','Tazah Khurmatu',21788,90199),
+('IQ','KRK','daquq-90220','داقوق','Daquq',0,90220),
+('IQ','NIN','tallkayf-90353','تلكيف','Tallkayf',23524,90353),
+('IQ','NIN','tall-afar-90393','tەlەʿfەr','Tall ''Afar',0,90393),
+('IQ','DQR','suq-ash-shuyukh-90510','سوق الشيوخ','Suq ash Shuyukh',0,90510),
+('IQ','DHK','sumayl-90532','sێmێl','Sumayl',152512,90532),
+('IQ','DHK','sinah-90708','سينة','Sinah',128776,90708),
+('IQ','KRB','ayn-tamr-90831','شثاثة','''Ayn Tamr',0,90831),
+('IQ','SAL','ash-sharqat-91057','الشرقاط','Ash Sharqat',160000,91057),
+('IQ','ARB','shaqlawah-91083','شقلاوة','Shaqlawah',32599,91083),
+('IQ','SUL','seyid-sadiq-91283','سيد صادق','Seyid Sadiq',0,91283),
+('IQ','DHK','taxa-cheya-91411','grێ hsێn mەlhەm','Taxa Cheya',2790,91411),
+('IQ','DIY','sarajiq-91546','سراجق','Sarajiq',10000,91546),
+('IQ','SAL','samarra-91597','سامراء','Samarra''',158508,91597),
+('IQ','ARB','pirmam-91696','سەلاحەدين','Pirmam',38686,91696),
+('IQ','BAS','safwan-91772','صفوان','Safwan',22929,91772),
+('IQ','BAB','saddat-al-hindiyah-91812','سدة الهندية','Saddat al Hindiyah',35720,91812),
+('IQ','ARB','ruwandiz-92002','راوندوز','Ruwandiz',22943,92002),
+('IQ','ANB','rawah-92004','راوة','Rawah',13000,92004),
+('IQ','SUL','ranyah-92052','رانية','Ranyah',114173,92052),
+('IQ','ANB','al-qa-im-92138','القائم','Al Qa''im',74100,92138),
+('IQ','DIY','habhab-92362','هبهب','Habhab',21373,92362),
+('IQ','NIN','al-hamdaniya-92430','قضاء الحمدانية','Al-Hamdaniya',50000,92430),
+('IQ','SUL','qeredagh-92436','qەrەdagh','Qeredagh',0,92436),
+('IQ','DQR','qal-at-sukkar-92511','قلعة سکر','Qal''at Sukkar',110000,92511),
+('IQ','MYS','qal-at-salih-92537','قلعة صالح','Qal''at Salih',39698,92537),
+('IQ','SUL','qeladize-92615','qەڵadzێ','Qeladize',140688,92615),
+('IQ','ARB','mergasur-93455','mێrgە swr','Mergasur',0,93455),
+('IQ','SUL','mawet-93562','mawەt','Mawet',1464,93562),
+('IQ','DHK','mangesh-93706','مانكيش','Mangesh',1285,93706),
+('IQ','DIY','mandali-93709','مندلي','Mandali',29785,93709),
+('IQ','ARB','mexmur-93818','mەkhmwr','Mexmur',0,93818),
+('IQ','ARB','koysinceq-94220','كوية','Koysinceq',44987,94220),
+('IQ','DIY','kifri-94298','كفرى','Kifri',30143,94298),
+('IQ','DIY','khanaqin-94591','khanەqyn','Khanaqin',175000,94591),
+('IQ','KRK','kirkuk-94787','كركوك','Kirkuk',1031000,94787),
+('IQ','KRB','karbala-94824','كةربالا','Karbala',1218732,94824),
+('IQ','DHK','kani-masi-94911','كانى ماسى','Kani Masi',0,94911),
+('IQ','SUL','kelar-95005','كلار','Kelar',250000,95005),
+('IQ','KRK','al-abbasi-95224','العباسي','Al `Abbasi',0,95224),
+('IQ','ARB','erbil-95446','أربيل','Erbil',1612700,95446),
+('IQ','ANB','hit-95788','هيت','Hit',31901,95788),
+('IQ','ARB','hiran-95804','خۆشاو','Hiran',0,95804),
+('IQ','ANB','al-haqlaniyah-95886','الحقلانية','Al Haqlaniyah',0,95886),
+('IQ','ARB','harir-96046','hەryr','Harir',32171,96046),
+('IQ','HLB','halabja-96205','حلبجة','Halabja',57333,96205),
+('IQ','ANB','hadithah-96309','حديثة','Hadithah',30925,96309),
+('IQ','ARB','xebat-96833','خبات','Xebat',148047,96833),
+('IQ','SUL','dukan-96953','دوكان','Dukan',0,96953),
+('IQ','ARB','soran-96961','dyanە','Soran',91589,96961),
+('IQ','DHK','dihok-96994','dھۆk','Dihok',340900,96994),
+('IQ','KRK','dibis-97001','دبز','Dibis',0,97001),
+('IQ','DHK','derkar-97145','دركار عجم','Derkar',0,97145),
+('IQ','SUL','chwarta-97329','جوارتا','Chwarta',0,97329),
+('IQ','SUL','jamjamal-97417','chەmchەmaڵ','Jamjamal',42593,97417),
+('IQ','DQR','al-jabayish-97478','الجبايش','Al Jabayish',0,97478),
+('IQ','SAL','bayji-97783','بيجي','Bayji',173677,97783),
+('IQ','DHK','begova-97788','kwmەlgەھa bێgwva','Begova',15000,97788),
+('IQ','DHK','batifa-97825','باتوفا','Batifa',28000,97825),
+('IQ','NIN','bartalah-97890','برطلة','Bartalah',15000,97890),
+('IQ','DIY','baqubah-97990','bەʿqwwbە','Baqubah',152550,97990),
+('IQ','SUL','baynjiwayn-98012','بنجوين','Baynjiwayn',27116,98012),
+('IQ','DHK','bamarni-98069','بامرني','Bamarni',0,98069),
+('IQ','DIY','baladruz-98109','بلدروز','Baladruz',0,98109),
+('IQ','SAL','balad-98112','بلد','Balad',42088,98112),
+('IQ','ARB','baharkah-98156','بحركة','Baharkah',130518,98156),
+('IQ','BGD','baghdad-98182','bەghdad','Baghdad',7216000,98182),
+('IQ','WAS','badrah-98198','بدرة','Badrah',0,98198),
+('IQ','BAS','az-zubayr-98245','الزبير','Az Zubayr',122676,98245),
+('IQ','NIN','ash-shaykhan-98293','yysfnێ','Ash Shaykhan',0,98293),
+('IQ','ARB','aynkawah-98304','عينكاوة','''Aynkawah',0,98304),
+('IQ','BGD','at-tarmiyah-98403','الطارمية','At Tarmiyah',0,98403),
+('IQ','WAS','as-suwayrah-98459','الصويرة','As Suwayrah',77200,98459),
+('IQ','SUL','sulaymaniyah-98463','slێmany','Sulaymaniyah',878146,98463),
+('IQ','MUT','as-samawah-98530','السماوه','As Samawah',152890,98530),
+('IQ','MUT','as-salman-98533','السلمان','As Salman',0,98533),
+('IQ','QAD','nahiyat-ash-shinafiyah-98589','الشنافية','Nahiyat ash Shinafiyah',22643,98589),
+('IQ','DQR','ash-shatrah-98622','الشطرة','Ash Shatrah',182175,98622),
+('IQ','QAD','ash-shamiyah-98629','الشامية','Ash Shamiyah',57661,98629),
+('IQ','ANB','ar-rutbah-98677','الرطبة','Ar Rutbah',22370,98677),
+('IQ','MUT','ar-rumaythah-98685','الرميثة','Ar Rumaythah',47248,98685),
+('IQ','KRK','ar-riyad-98697','الرياض','Ar Riyad',0,98697),
+('IQ','DQR','ar-rifa-i-98699','الرفاعي','Ar Rifa''i',0,98699),
+('IQ','ANB','ramadi-98717','الرمادى','Ramadi',223500,98717),
+('IQ','NIN','aqrah-98822','ئاكرێ','''Aqrah',23000,98822),
+('IQ','WAS','an-nu-maniyah-98846','النعمانية','An Nu''maniyah',110000,98846),
+('IQ','DQR','nasiriyah-98854','الناصرية','Nasiriyah',558400,98854),
+('IQ','NAJ','najaf-98860','النجف','Najaf',482576,98860),
+('IQ','ANB','anat-al-qadimah-98885','عنة القديمة','''Anat al Qadimah',19719,98885),
+('IQ','BAS','al-qurnah-98993','القرنة','Al Qurnah',134174,98993),
+('IQ','NIN','al-qayyarah-99003','القيارة','Al Qayyarah',0,99003),
+('IQ','BAB','al-qasim-99010','القاسم','Al-Qasim',93546,99010),
+('IQ','BAB','al-musayab-99039','المسيب','Al-Musayab',101873,99039),
+('IQ','NAJ','al-mishkhab-99060','المشخاب','Al Mishkhab',23189,99060),
+('IQ','DIY','al-miqdadiyah-99062','المقدادية','Al Miqdadiyah',155968,99062),
+('IQ','MYS','al-maymunah-99070','الميمونة','Al Maymunah',0,99070),
+('IQ','NIN','al-mawsil-al-jadidah-99071','الموصل الجديدة','Al Mawsil al Jadidah',2065597,99071),
+('IQ','NIN','mosul-99072','mwsڵ','Mosul',1683000,99072),
+('IQ','BGD','al-mahmudiyah-99100','المحمودية','Al Mahmudiyah',350000,99100),
+('IQ','BAB','al-mahawil-99103','المحاويل','Al Mahawil',31200,99103),
+('IQ','BAS','al-madinah-99106','المدينة','Al Madinah',255000,99106),
+('IQ','WAS','al-kut-99131','الكوت','Al-Kut',315162,99131),
+('IQ','NAJ','kufa-99135','الكوفة','Kufa',110000,99135),
+('IQ','DIY','al-khalis-99168','الخالص','Al Khalis',0,99168),
+('IQ','DIY','khalis-99169','خالص','Khalis',70046,99169),
+('IQ','MYS','al-kahla-99182','الكحلاء','Al Kahla''',0,99182),
+('IQ','BAB','nahiyat-al-iskandariyah-99226','الإسكندرية','Nahiyat al Iskandariyah',100600,99226),
+('IQ','MYS','ali-al-gharbi-99306','علي الغربي','''Ali al Gharbi',19711,99306),
+('IQ','KRB','al-hindiyah-99344','الهندية','Al Hindiyah',139578,99344),
+('IQ','BAB','al-hillah-99347','hlە','Al Hillah',455700,99347),
+('IQ','WAS','al-hayy-99350','الحي','Al Hayy',78272,99350),
+('IQ','BAB','al-hashimiyah-99357','الهاشمية','Al Hashimiyah',0,99357),
+('IQ','BAS','al-harithah-99369','الهارثة','Al Harithah',92395,99369),
+('IQ','QAD','al-hamzah-99375','الحمزة','Al Hamzah',0,99375),
+('IQ','NIN','al-hadar-99413','الحضر','Al Hadar',0,99413),
+('IQ','QAD','nahiyat-ghammas-99434','غماس','Nahiyat Ghammas',30909,99434),
+('IQ','DQR','nahiyat-al-fuhud-99439','Nāḩiyat al Fuhūd','Nahiyat al Fuhud',21551,99439),
+('IQ','BAS','al-faw-99446','الفاو','Al Faw',104569,99446),
+('IQ','ANB','al-fallujah-99454','fەlwjە','Al Fallujah',190159,99454),
+('IQ','NIN','al-ba-aj-99524','البعاج','Al Ba''aj',0,99524),
+('IQ','BAS','basrah-99532','البصرة','Basrah',1326564,99532),
+('IQ','WAS','al-aziziyah-99548','العزيزية','Al ''Aziziyah',44751,99548),
+('IQ','SAL','al-awjah-99560','العوجة','Al ''Awjah',0,99560),
+('IQ','MYS','al-amarah-99608','العمارة','Al ''Amarah',323302,99608),
+('IQ','DHK','al-amadiyah-99611','ئاميدى','Al ''Amadiyah',0,99611),
+('IQ','QAD','afak-99738','عفك','''Afak',35536,99738),
+('IQ','SAL','ad-dujayl-99759','Ad Dujayl','Ad Dujayl',26362,99759),
+('IQ','QAD','al-diwaniyah-99762','dywanyە','Al Diwaniyah',318801,99762),
+('IQ','SAL','ad-dawr-99768','الدور','Ad Dawr',0,99768),
+('IQ','NAJ','al-manadhirah-99834','ابو صخير','Al Manadhirah',0,99834),
+('IQ','BAS','abi-al-khasib-100050','أبي الخصيب','Abi al Khasib',0,100050),
+('IQ','BGD','abu-ghurayb-100077','أبو غريب','Abu Ghurayb',900000,100077),
+('IQ','SUL','derbendixan-384945','دربندخان','Derbendixan',54896,384945),
+('IQ','KRK','al-hawijah-390188','الحويجة','Al Hawijah',0,390188),
+('IQ','NIN','akra-445694','بيوك','''Akra',105370,445694),
+('IQ','ARB','qushtepe-446174','قوش تبة','Qushtepe',0,446174),
+('IQ','ARB','dare-tu-446185','darەtww','Dare Tu',0,446185),
+('IQ','ARB','khasnahzan-446208','كستران ستي اسماعيل','Khasnahzan',146639,446208),
+('IQ','ARB','khalifan-446732','خليفان','Khalifan',19891,446732),
+('IQ','SUL','hajiawa-447022','Hajiawa','Hajiawa',80000,447022),
+('IQ','ARB','choman-447741','جومان','Choman',0,447741),
+('IQ','NIN','sinjar-448149','سنجار','Sinjar',38294,448149),
+('IQ','SUL','halshaw-6676920','الشو','Halshaw',0,6676920),
+('IQ','ANB','anah-6765385','الريحانة','''Anah',27000,6765385),
+('IQ','SAL','al-alam-6871926','العلم','Al-''Alam',25662,6871926),
+('IQ','DHK','ibrahim-al-khalil-6998238','ئيبراهيم خەليل','Ibrahim al Khalil',0,6998238),
+('IQ','NIN','kays-qal-ah-6999619','kys qەlێ','Kays Qal''ah',10000,6999619),
+('IQ','ARB','nahiyat-hiran-7097617','ناحية هيران','Nahiyat Hiran',0,7097617),
+('IQ','BAS','nahiyat-bahar-7326104','ناحية بحار','Nahiyat Bahar',0,7326104),
+('IQ','BAS','nahiyat-atbah-7326105','ناحية عتبة','Nahiyat `Atbah',0,7326105),
+('IQ','MYS','nahiyat-ali-ash-sharqi-7374646','علي الشرقي','Nahiyat Ali ash Sharqi',0,7374646),
+('IQ','SUL','hayraw-7377819','هيرو','Hayraw',0,7377819),
+('IQ','BGD','sadr-city-7802746','مدينة الصدر','Sadr City',1211849,7802746),
+('IQ','DHK','taxe-cheya-azadiye-9072952','yazadyێ','Taxe Cheya Azadiye',2643,9072952),
+('IQ','DHK','dereluk-devera-niheliya-9253107','دیرلوك منطقه نهیلي','Dereluk Devera Niheliya',44448,9253107),
+('IQ','DHK','simele-10303650','Simele','Simele',152512,10303650),
+('IQ','SAL','alzwya-12494059','AlZwya','AlZwya',15000,12494059),
+('IQ','SAL','hawe-ben-alean-12494060','Hawe Ben Alean','Hawe Ben Alean',1500,12494060),
+('IQ','DHK','hetit-12902756','هتيت','Hetit',2700,12902756),
+('IQ','ARB','kuchka-12902769','کوجکا','Kuchka',2700,12902769),
+('IQ','SUL','shurash-13631406','شورش','Shurash',29960,13631406),
+('IQ','BAS','abu-al-kahsib-13631407','Abū al-Kahṣīb','Abu al-Kahsib',357771,13631407),
+('IQ','DHK','sheladiz-13680586','Shelādiz','Sheladiz',50000,13680586);
+insert into public.cities(province_id,slug,name_fa,name_en,is_published,position)
+select p.id,i.slug,i.name_fa,i.name_en,true,row_number() over(partition by p.id order by i.population desc,i.name_en)::integer
+from city_import i join public.countries c on c.code=i.country_code join public.provinces p on p.country_id=c.id and p.code=i.province_code
+on conflict(province_id,slug) do update set name_fa=excluded.name_fa,name_en=excluded.name_en,is_published=true,position=excluded.position;
+
+-- Original: 20260807125322_editable_page_content_and_faqs.sql
+create table public.faq_items(
+  id bigint generated always as identity primary key,
+  category_fa text not null,category_en text not null,
+  question_fa text not null,question_en text not null,
+  answer_fa text not null,answer_en text not null,
+  position integer not null default 0 check(position>=0),
+  is_published boolean not null default true,
+  created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+);
+create index faq_items_public_position_idx on public.faq_items(position) where is_published;
+create trigger faq_items_set_updated_at before update on public.faq_items for each row execute function private.set_updated_at();
+alter table public.faq_items enable row level security;
+create policy faq_items_public_read on public.faq_items for select to app_visitor,app_staff using(is_published);
+create policy faq_items_staff_manage on public.faq_items for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+grant select on public.faq_items to app_visitor,app_staff;grant insert,update,delete on public.faq_items to app_staff;grant usage,select on sequence public.faq_items_id_seq to app_staff;
+
+with copy(namespace,key,fa,en,description) as (values
+('home','hero.kicker','از تبریز','From Tabriz','تیتر اول هیرو'),('home','hero.title','تا بازارهای جهانی','Toward global markets','تیتر اصلی هیرو'),('home','hero.subtitle','ساخت ایران، حرکت به جلو','Made in Iran, moving forward','زیرعنوان هیرو'),('home','hero.description','تولیدکننده انواع روغن موتور، ضدیخ، روغن ترمز و واسکازین با نگاه رو به آینده','Automotive lubricants and specialty fluids built with a forward-looking approach','توضیح هیرو'),('home','hero.badge_title','ساخت ایران','Made in Iran','برچسب تصویر'),('home','hero.badge_subtitle','حرکت به جلو','Moving forward','برچسب تصویر'),('home','products.eyebrow','محصولات ما','Our products','عنوان کوچک محصولات'),('home','products.title','راهکارهای تخصصی برای عملکرد بهتر','Specialist solutions for better performance','عنوان محصولات'),('home','factory.eyebrow','درباره مجموعه','Inside the company','عنوان کوچک کارخانه'),('home','factory.title','دیار صنعت تبریز','Diyar Sanat Tabriz','عنوان کارخانه'),('home','factory.description','دیار صنعت با تمرکز بر توسعه روانکارها و سیالات تخصصی خودرو، مسیر تولید دقیق و رشد پایدار را دنبال می‌کند.','Diyar Sanat develops automotive lubricants and specialty fluids through disciplined production and sustainable growth.','متن معرفی کارخانه'),
+('about','hero.current','درباره ما','About us','مسیر صفحه'),('about','hero.eyebrow','ساخت ایران، حرکت به جلو','Made in Iran, moving forward','عنوان کوچک'),('about','hero.title','دیار صنعت تبریز','Diyar Sanat Tabriz','عنوان اصلی'),('about','hero.description','معرفی شرکت، مسیر تولید و نگاه رو به آینده؛ دقیق، مستند و بدون ادعاهای تأییدنشده.','The company, its production direction, and forward-looking approach—presented precisely and without unverified claims.','توضیح هیرو'),('about','story.eyebrow','روایت مجموعه','Our story','عنوان کوچک معرفی'),('about','story.title','تولید تخصصی با نگاه مهندسی','Specialist production with an engineering mindset','عنوان معرفی'),('about','story.description','دیار صنعت تبریز در مسیر توسعه محصولات خودرویی قابل‌اعتماد، ایجاد فرایندهای منظم و ساختن ارتباط حرفه‌ای با بازار حرکت می‌کند.','Diyar Sanat Tabriz is developing dependable automotive products, disciplined processes, and professional market relationships.','متن معرفی'),('about','vision.title','حرکت مرحله‌به‌مرحله به سوی بازارهای منطقه‌ای و جهانی','A measured path toward regional and global markets','عنوان چشم‌انداز'),('about','vision.description','چشم‌انداز مجموعه، توسعه توانمندی محصول و همکاری‌های آینده است و به معنی ادعای صادرات فعال نیست.','The vision is to develop product capabilities and future partnerships and does not claim active exports.','متن چشم‌انداز'),
+('contact','hero.current','تماس با ما','Contact','مسیر صفحه'),('contact','hero.eyebrow','ارتباط مستقیم','Direct communication','عنوان کوچک'),('contact','hero.title','با دیار صنعت در ارتباط باشید','Contact Diyar Sanat','عنوان اصلی'),('contact','hero.description','اطلاعات تماس مجموعه و مسیر ارتباط با واحدهای تخصصی را در این صفحه مشاهده کنید.','Find company contact information and reach the appropriate specialist team.','توضیح'),('contact','office.title','دفتر دیار صنعت تبریز','Diyar Sanat Tabriz office','عنوان اطلاعات تماس'),('contact','office.email','info@diyarsanat.com','info@diyarsanat.com','ایمیل'),('contact','office.phone','در انتظار تأیید رسمی','Pending official verification','تلفن'),('contact','office.address','تبریز، ایران — نشانی دقیق در انتظار تأیید','Tabriz, Iran — full address pending verification','نشانی'),
+('faq','hero.current','پرسش‌های متداول','FAQ','مسیر صفحه'),('faq','hero.eyebrow','مرکز پاسخ‌گویی','Help center','عنوان کوچک'),('faq','hero.title','پاسخ سؤال‌های مهم، پیش از انتخاب','Answers before you choose','عنوان اصلی'),('faq','hero.description','درباره خرید از نمایندگان، اصالت کالا، انتخاب محصول و پیگیری درخواست پاسخ‌های روشن پیدا کنید.','Clear guidance on verified purchasing, authenticity, product choice, and tracking.','توضیح'),
+('buying-guide','hero.current','راهنمای خرید','Buying guide','مسیر صفحه'),('buying-guide','hero.eyebrow','انتخاب مطمئن','Confident selection','عنوان کوچک'),('buying-guide','hero.title','درست انتخاب کنید، از مسیر معتبر تهیه کنید','Choose correctly. Buy through verified channels.','عنوان اصلی'),('buying-guide','hero.description','این وب‌سایت فروشگاه آنلاین نیست. محصولات را از نمایندگان معتبر تهیه کنید و نیاز فنی خودرو را بررسی کنید.','This website is not an online store. Buy from verified representatives and check vehicle requirements.','توضیح'),
+('international','hero.current','همکاری بین‌المللی','International cooperation','مسیر صفحه'),('international','hero.eyebrow','در مسیر بازارهای منطقه‌ای و جهانی','Toward regional and global markets','عنوان کوچک'),('international','hero.title','همکاری بین‌المللی','International cooperation','عنوان اصلی'),('international','hero.description','دیار صنعت پیشنهادهای حرفه‌ای واردکنندگان، توزیع‌کنندگان و شرکای صنعتی را بررسی می‌کند؛ این صفحه به معنی ادعای صادرات فعال نیست.','Diyar Sanat welcomes professional inquiries from importers, distributors, and industrial partners; this does not claim active exports.','توضیح'),
+('global-footer','credentials.title','نمادها و مجوزها','Credentials','عنوان مجوزها'),('global-footer','contact.title','اطلاعات تماس','Contact information','عنوان تماس'),('global-footer','contact.location','تبریز، ایران','Tabriz, Iran','موقعیت'),('global-footer','contact.phone','شماره رسمی در انتظار تأیید','Official number pending approval','تلفن'),('global-footer','contact.email','info@diyarsanat.com','info@diyarsanat.com','ایمیل'),('global-footer','quick_links.title','دسترسی سریع','Quick links','عنوان لینک‌ها')
+)
+insert into public.site_translations(namespace,translation_key,locale,value,description)
+select namespace,key,'fa',fa,description from copy union all select namespace,key,'en',en,description from copy
+on conflict(namespace,translation_key,locale) do nothing;
+
+insert into public.site_translations(namespace,translation_key,locale,value,description) values
+('home','brands.eyebrow','fa','خانواده برندهای دیار صنعت','عنوان کوچک برندها'),('home','brands.eyebrow','en','Diyar Sanat brand family','Brands eyebrow'),
+('home','brands.title','fa','برندهای ما','عنوان برندها'),('home','brands.title','en','Our brands','Brands title'),
+('home','brands.description','fa','سه هویت مستقل در مسیر توسعه سبد روانکارها و سیالات خودرویی','توضیح برندها'),('home','brands.description','en','Three distinct identities shaping our automotive fluids portfolio','Brands description'),
+('home','media.eyebrow','fa','مجله دیار صنعت','عنوان کوچک رسانه'),('home','media.eyebrow','en','Diyar Sanat journal','Media eyebrow'),
+('home','media.title','fa','اخبار و تازه‌ها','عنوان رسانه'),('home','media.title','en','News & insights','Media title'),
+('home','media.description','fa','تازه‌ترین مطالب تخصصی، رویدادها و راهنماهای مرتبط با محصولات','توضیح رسانه'),('home','media.description','en','The latest technical articles, events, and product guidance','Media description'),
+('home','certificates.title','fa','مجوزها و استانداردهای مجموعه','عنوان گواهینامه‌ها'),('home','certificates.title','en','Company licenses and standards','Certificates title'),
+('home','certificates.description','fa','شناسه‌های ثبتی و استانداردهای اعلام‌شده دیار صنعت تبریز','توضیح گواهینامه‌ها'),('home','certificates.description','en','Declared registrations and standards of Diyar Sanat Tabriz','Certificates description'),
+('global-footer','newsletter.title','fa','از جدیدترین محصولات و اخبار باخبر شوید','عنوان خبرنامه'),('global-footer','newsletter.title','en','Stay informed about products and news','Newsletter title'),
+('global-footer','newsletter.description','fa','با عضویت در خبرنامه، تازه‌های دیار صنعت را دریافت کنید.','توضیح خبرنامه'),('global-footer','newsletter.description','en','Subscribe for the latest updates from Diyar Sanat.','Newsletter description'),
+('global-footer','customer_service.title','fa','خدمات مشتریان','عنوان خدمات'),('global-footer','customer_service.title','en','Customer service','Customer service title'),
+('global-footer','products.title','fa','محصولات','عنوان محصولات'),('global-footer','products.title','en','Products','Products title')
+on conflict(namespace,translation_key,locale) do nothing;
+
+insert into public.faq_items(category_fa,category_en,question_fa,question_en,answer_fa,answer_en,position) values
+('خرید و نمایندگی','Purchase & agents','آیا امکان خرید مستقیم از سایت وجود دارد؟','Can I buy directly from this website?','خیر. این وب‌سایت فروشگاه اینترنتی نیست. محصولات را فقط از نمایندگان معتبر معرفی‌شده در صفحه نمایندگان تهیه کنید.','No. This website is not an online store. Buy only from verified representatives listed on the representatives page.',1),
+('خرید و نمایندگی','Purchase & agents','نماینده معتبر را چگونه پیدا کنم؟','How do I find a verified representative?','در صفحه نمایندگان، کشور و استان را انتخاب کنید. فقط اطلاعات منتشرشده پس از تأیید رسمی شرکت معتبر است.','Choose your country and province on the representatives page. Only published, company-verified details are official.',2),
+('اصالت محصول','Authenticity','چطور محصول اصلی را از نمونه مشکوک تشخیص بدهم؟','How can I identify a suspicious product?','پلمب، کیفیت چاپ، کد تولید و سلامت ظرف را بررسی کنید. هیچ نشانه‌ای به‌تنهایی اصالت را قطعی نمی‌کند و محل خرید معتبر مهم‌ترین معیار است.','Check the seal, print quality, production markings, and container. No single sign proves authenticity; a verified seller is the strongest safeguard.',3),
+('اصالت محصول','Authenticity','اگر بسته‌بندی آسیب‌دیده یا ناخوانا بود چه کنم؟','What if the package is damaged or unreadable?','از مصرف محصول خودداری کنید، فاکتور و تصاویر را نگه دارید و موضوع را از مسیر تماس رسمی گزارش دهید.','Do not use the product. Keep the invoice and photos, then report it through the official contact channel.',4),
+('انتخاب محصول','Product choice','برای خودروی من کدام روغن مناسب است؟','Which oil is suitable for my vehicle?','دفترچه خودرو و الزامات سازنده اولویت دارد. گرانروی، سطح کیفی و نوع محصول باید با مشخصات خودرو سازگار باشد.','Follow the vehicle manual and manufacturer requirements. Viscosity, performance level, and product type must match the vehicle.',5),
+('انتخاب محصول','Product choice','آیا می‌توان روغن‌ها یا ضدیخ‌های متفاوت را مخلوط کرد؟','Can different oils or coolants be mixed?','اختلاط بدون بررسی سازگاری توصیه نمی‌شود. دستورالعمل سازنده خودرو و روش تعویض مناسب را رعایت کنید.','Mixing without a compatibility check is not recommended. Follow the vehicle maker’s guidance and correct change procedure.',6),
+('درخواست‌ها','Requests','چگونه وضعیت درخواست خود را پیگیری کنم؟','How can I track my request?','از صفحه پیگیری درخواست و کد درج‌شده در پیام تأیید استفاده کنید.','Use the request-tracking page and the code shown in your confirmation.',7);
+
+
+-- Original: 20260807161124_product_content_and_site_identity.sql
+create table public.product_images(id bigint generated always as identity primary key,product_id bigint not null references public.products(id) on delete cascade,file_url text not null,alt_fa text not null,alt_en text not null,is_primary boolean not null default false,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create unique index product_images_one_primary_idx on public.product_images(product_id) where is_primary;
+create index product_images_product_position_idx on public.product_images(product_id,position);
+create table public.product_features(id bigint generated always as identity primary key,product_id bigint not null references public.products(id) on delete cascade,icon_key text not null check(icon_key in('shield','droplet','gear','snowflake','thermometer','flask','brake','oil','package','check','star','leaf')),title_fa text not null,title_en text not null,description_fa text,description_en text,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index product_features_product_position_idx on public.product_features(product_id,position);
+create table public.product_applications(id bigint generated always as identity primary key,product_id bigint not null references public.products(id) on delete cascade,title_fa text not null,title_en text not null,description_fa text,description_en text,position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index product_applications_product_position_idx on public.product_applications(product_id,position);
+create table public.product_downloads(id bigint generated always as identity primary key,product_id bigint not null references public.products(id) on delete cascade,file_url text not null,title_fa text not null,title_en text not null,file_type text not null default 'catalog' check(file_type in('catalog','datasheet','certificate','manual','other')),position integer not null default 0 check(position>=0),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index product_downloads_product_position_idx on public.product_downloads(product_id,position);
+create table public.site_settings(id boolean primary key default true check(id),site_title_fa text not null default 'دیار صنعت تبریز',site_title_en text not null default 'Diyar Sanat Tabriz',site_description_fa text not null default '',site_description_en text not null default '',header_logo_url text,admin_logo_url text,login_logo_url text,favicon_url text,google_site_verification text,default_og_image_url text,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),updated_by uuid references private.users(id) on delete set null);
+insert into public.site_settings(id) values(true) on conflict(id) do nothing;
+
+create trigger product_images_set_updated_at before update on public.product_images for each row execute function private.set_updated_at();
+create trigger product_features_set_updated_at before update on public.product_features for each row execute function private.set_updated_at();
+create trigger product_applications_set_updated_at before update on public.product_applications for each row execute function private.set_updated_at();
+create trigger product_downloads_set_updated_at before update on public.product_downloads for each row execute function private.set_updated_at();
+create trigger site_settings_set_updated_at before update on public.site_settings for each row execute function private.set_updated_at();
+
+alter table public.product_images enable row level security;alter table public.product_features enable row level security;alter table public.product_applications enable row level security;alter table public.product_downloads enable row level security;alter table public.site_settings enable row level security;
+create policy product_images_public_read on public.product_images for select to app_visitor,app_staff using(exists(select 1 from public.products p where p.id=product_id and p.is_published) or (select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_features_public_read on public.product_features for select to app_visitor,app_staff using(exists(select 1 from public.products p where p.id=product_id and p.is_published) or (select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_applications_public_read on public.product_applications for select to app_visitor,app_staff using(exists(select 1 from public.products p where p.id=product_id and p.is_published) or (select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_downloads_public_read on public.product_downloads for select to app_visitor,app_staff using(exists(select 1 from public.products p where p.id=product_id and p.is_published) or (select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_images_staff_manage on public.product_images for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_features_staff_manage on public.product_features for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_applications_staff_manage on public.product_applications for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy product_downloads_staff_manage on public.product_downloads for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy site_settings_public_read on public.site_settings for select to app_visitor,app_staff using(true);
+create policy site_settings_manager_update on public.site_settings for update to app_staff using((select private.has_staff_role(array['manager']))) with check((select private.has_staff_role(array['manager'])));
+grant select on public.product_images,public.product_features,public.product_applications,public.product_downloads,public.site_settings to app_visitor,app_staff;
+grant insert,update,delete on public.product_images,public.product_features,public.product_applications,public.product_downloads to app_staff;grant update on public.site_settings to app_staff;
+grant usage,select on sequence public.product_images_id_seq,public.product_features_id_seq,public.product_applications_id_seq,public.product_downloads_id_seq to app_staff;
+
+
+-- Original: 20260807163600_homepage_slider_and_video.sql
+create table public.homepage_hero_slides(id bigint generated always as identity primary key,image_url text not null,alt_fa text not null,alt_en text not null,kicker_fa text not null,kicker_en text not null,title_fa text not null,title_en text not null,subtitle_fa text,subtitle_en text,description_fa text,description_en text,primary_label_fa text,primary_label_en text,primary_href text not null default '/products',secondary_label_fa text,secondary_label_en text,secondary_href text,position integer not null default 0 check(position>=0),is_published boolean not null default true,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index homepage_hero_slides_public_position_idx on public.homepage_hero_slides(position) where is_published;
+create table public.homepage_video(id boolean primary key default true check(id),video_url text,cover_url text,title_fa text not null default 'تیزر معرفی کارخانه',title_en text not null default 'Factory introduction',subtitle_fa text,subtitle_en text,description_fa text,description_en text,is_published boolean not null default true,created_at timestamptz not null default now(),updated_at timestamptz not null default now());insert into public.homepage_video(id) values(true) on conflict(id) do nothing;
+create trigger homepage_hero_slides_set_updated_at before update on public.homepage_hero_slides for each row execute function private.set_updated_at();create trigger homepage_video_set_updated_at before update on public.homepage_video for each row execute function private.set_updated_at();alter table public.homepage_hero_slides enable row level security;alter table public.homepage_video enable row level security;
+create policy homepage_hero_slides_public_read on public.homepage_hero_slides for select to app_visitor,app_staff using(is_published or (select private.has_staff_role(array['manager','admin','seo'])));create policy homepage_hero_slides_staff_manage on public.homepage_hero_slides for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+create policy homepage_video_public_read on public.homepage_video for select to app_visitor,app_staff using(is_published or (select private.has_staff_role(array['manager','admin','seo'])));create policy homepage_video_staff_manage on public.homepage_video for all to app_staff using((select private.has_staff_role(array['manager','admin','seo']))) with check((select private.has_staff_role(array['manager','admin','seo'])));
+grant select on public.homepage_hero_slides,public.homepage_video to app_visitor,app_staff;grant insert,update,delete on public.homepage_hero_slides to app_staff;grant update on public.homepage_video to app_staff;grant usage,select on sequence public.homepage_hero_slides_id_seq to app_staff;
+
+
+-- Server-only session, OTP, and rate-limit records. Tokens are never stored raw.
+create table private.sessions (
+ token_hash text primary key,
+ user_id uuid not null references private.users(id) on delete cascade,
+ expires_at timestamptz not null,
+ created_at timestamptz not null default now()
+);
+create index sessions_user_idx on private.sessions(user_id);
+create index sessions_expiry_idx on private.sessions(expires_at);
+create table private.otp_challenges (
+ phone text primary key,
+ user_id uuid not null references private.users(id) on delete cascade,
+ code_hash text not null,
+ expires_at timestamptz not null,
+ resend_at timestamptz not null,
+ attempts integer not null default 0
+);
+create index otp_user_idx on private.otp_challenges(user_id);
+create table private.rate_limits (
+ key text primary key,
+ attempts integer not null default 1,
+ resets_at timestamptz not null
+);
+create index rate_limits_expiry_idx on private.rate_limits(resets_at);
+create unique index profiles_phone_unique on public.profiles(phone) where phone is not null;
+-- The trusted backend role handles credentials and validated submission inserts.
+-- Ordinary page queries always SET LOCAL ROLE to app_visitor or app_staff.
+do $$ declare t record; begin
+ for t in select schemaname,tablename from pg_tables where schemaname in ('public','private') loop
+  execute format('alter table %I.%I enable row level security',t.schemaname,t.tablename);
+  execute format('create policy backend_access on %I.%I for all to app_backend using (true) with check (true)',t.schemaname,t.tablename);
+  execute format('grant select,insert,update,delete on %I.%I to app_backend',t.schemaname,t.tablename);
+ end loop;
+end $$;
+grant usage,select on all sequences in schema public,private to app_backend;
+revoke all on all tables in schema private from public,app_visitor,app_staff;
+revoke all on function private.current_staff_role(),private.has_staff_role(text[]) from public;
+-- Add indexes for every foreign key not already covered by a leading index.
+do $$ declare r record; begin
+ for r in select c.conrelid::regclass tbl,a.attname col from pg_constraint c
+ join pg_attribute a on a.attrelid=c.conrelid and a.attnum=c.conkey[1]
+ where c.contype='f' and c.connamespace in ('public'::regnamespace,'private'::regnamespace)
+ and not exists(select 1 from pg_index i where i.indrelid=c.conrelid and i.indkey[0]=c.conkey[1]) loop
+ execute format('create index on %s (%I)',r.tbl,r.col);
+ end loop;
+end $$;

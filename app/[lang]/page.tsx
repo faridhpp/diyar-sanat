@@ -15,7 +15,7 @@ import { brands } from "@/lib/brands";
 import { getDictionary, isLocale } from "@/lib/i18n";
 import { notFound } from "next/navigation";
 import { getManagedTranslations } from "@/lib/site-content";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { HomepageHero, type HomeSlide } from "@/components/homepage-hero";
 
 export default async function HomePage({ params }: PageProps<"/[lang]">) {

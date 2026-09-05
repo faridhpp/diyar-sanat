@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 const v = (data: FormData, key: string, max = 800) => String(data.get(key) ?? "").trim().slice(0, max);
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

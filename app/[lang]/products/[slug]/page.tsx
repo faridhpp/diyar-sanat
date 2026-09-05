@@ -11,7 +11,7 @@ import {
   productFallbackImage,
 } from "@/lib/catalog";
 import { getDictionary, isLocale } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 
 type Props = { params: Promise<{ lang: string; slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

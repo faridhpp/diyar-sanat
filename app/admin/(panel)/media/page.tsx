@@ -1,6 +1,6 @@
 import { AdminUploadField } from "@/components/admin-upload-field";
 import { requireStaff } from "@/lib/admin/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/db/server";
 import { createAsset, deleteAsset } from "../library-actions";
 
 type Asset = { id:number; asset_type:"image"|"video"|"document"|"catalog"; title_fa:string; title_en:string; description_fa:string|null; description_en:string|null; file_url:string; thumbnail_url:string|null; is_public:boolean; downloadable:boolean };

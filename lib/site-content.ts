@@ -1,7 +1,7 @@
 import "server-only";
 import type {Metadata} from "next";
 import type {Locale} from "@/lib/i18n";
-import {createClient} from "@/lib/supabase/server";
+import {createClient} from "@/lib/db/server";
 
 export async function getManagedMetadata(locale:Locale,route:string,fallback:Metadata):Promise<Metadata>{
   const{data}=await(await createClient()).from("seo_settings").select("title,description,canonical_url,robots_index,robots_follow,og_image_url").eq("locale",locale).eq("route",route).maybeSingle();
