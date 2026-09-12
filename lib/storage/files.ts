@@ -3,9 +3,13 @@ import { dirname, resolve } from 'node:path';
 
 export const fileTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',avif:'image/avif',pdf:'application/pdf',mp4:'video/mp4',webm:'video/webm',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
 export const buckets=['site-media','job-resumes','contact-attachments','international-profiles','representative-documents'] as const;
+const uploadRoot = () => resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR || './data/uploads');
 export function filePath(bucket:string,path:string) {
   if(!(buckets as readonly string[]).includes(bucket)||!path||path.split('/').some(part=>!part||part==='.'||part==='..'||!/^[a-zA-Z0-9_.-]+$/.test(part)))throw new Error('Invalid file path');
-  return resolve(process.env.UPLOAD_DIR||'./data/uploads',bucket,path);
+  const root = uploadRoot();
+  const destination = resolve(root,bucket,path);
+  if(destination !== root && !destination.startsWith(`${root}\\`) && !destination.startsWith(`${root}/`))throw new Error('Invalid file path');
+  return destination;
 }
 export function fileUrl(bucket:string,path:string) {
   filePath(bucket,path);

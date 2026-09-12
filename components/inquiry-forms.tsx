@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import type { Locale } from "@/lib/i18n";
+import { DynamicCaptcha } from "@/components/dynamic-captcha";
 
 function Success({
   locale,
@@ -39,25 +40,7 @@ function submitCode(prefix: string) {
 function Privacy({ locale }: { locale: Locale }) {
   return (
     <>
-      <label className="business-field captcha-field">
-        <span>
-          {locale === "fa"
-            ? "پرسش امنیتی: حاصل ۳ + ۴ *"
-            : "Security check: 3 + 4 *"}
-        </span>
-        <input
-          required
-          name="security-answer"
-          inputMode="numeric"
-          pattern="7"
-          placeholder={locale === "fa" ? "پاسخ" : "Answer"}
-        />
-        <small>
-          {locale === "fa"
-            ? "برای جلوگیری از ارسال خودکار"
-            : "Helps prevent automated submissions"}
-        </small>
-      </label>
+      <DynamicCaptcha locale={locale} />
       <label className="form-consent">
         <input required type="checkbox" />
         <span>

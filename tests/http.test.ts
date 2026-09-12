@@ -13,6 +13,7 @@ after(async()=>{if(process.env.TEST_DATABASE_URL)await getPool().end();});
 httpTest('production HTTP: locales, authentication, roles, uploads, submissions, logout',async()=>{
   const tag=randomUUID().slice(0,8),ids:string[]=[],uploaded:{bucket:string;path:string}[]=[],tracking:{table:string;code:string}[]=[];
   const post=(route:string,body:unknown,cookie='',origin=base!)=>fetch(base+route,{method:'POST',redirect:'manual',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(body)});
+  const captcha=async()=>{const response=await fetch(base+'/api/captcha?locale=en');const challenge=await response.json() as {question:string;token:string};const [left,operator,right]=challenge.question.split(' ');return{captcha:String(operator==='−'?Number(left)-Number(right):Number(left)+Number(right)),captcha_token:challenge.token};};
   try {
     for(const locale of ['fa','en']){
       const response=await fetch(`${base}/${locale}`);assert.equal(response.status,200);
@@ -22,7 +23,8 @@ httpTest('production HTTP: locales, authentication, roles, uploads, submissions,
     assert.equal((await fetch(base+'/api/health')).status,200);
     assert.equal((await fetch(base+'/admin',{redirect:'manual'})).status,307);
     for(const role of ['manager','seo'] as const)ids.push(await createStaffAccount({email:`http-${role}-${tag}@example.test`,password:'Secure-Password-123',displayName:'HTTP test',role,phone:role==='manager'?'+989'+String(Date.now()).slice(-9):undefined}));
-    const login={email:`http-manager-${tag}@example.test`,password:'Secure-Password-123',captcha:'7'};
+    await backend(db=>db.execute(sql`update admin_settings set require_captcha=true where id=true`));
+    const login={email:`http-manager-${tag}@example.test`,password:'Secure-Password-123',...(await captcha())};
     assert.equal((await post('/api/auth/password',login,'','https://wrong.example')).status,403);
     assert.equal((await post('/api/auth/password',{...login,captcha:'0'})).status,401);
     assert.equal((await post('/api/auth/password',{...login,password:'wrong'})).status,401);
@@ -41,15 +43,15 @@ httpTest('production HTTP: locales, authentication, roles, uploads, submissions,
     assert.equal((await post('/api/admin/settings',{},seoCookie)).status,403);
     assert.equal((await fetch(base+'/api/admin/locations?level=countries',{headers:{Cookie:cookie}})).status,200);
     const forms=[
-      {route:'contact-submissions',table:'contact_submissions',bucket:'contact-attachments',fileKey:'attachment',fields:{name:'Test User',mobile:'09121234567',email:'test@example.test',subject:'Integration test',destination:'sales',message:'Test message',captcha:'7',consent:'on'}},
-      {route:'job-applications',table:'job_applications',bucket:'job-resumes',fileKey:'resume',fields:{name:'Test User',mobile:'09121234567',email:'test@example.test',expertise:'Engineering',position:'general',captcha:'7',consent:'on'}},
-      {route:'international-inquiries',table:'international_inquiries',bucket:'international-profiles',fileKey:'profile',fields:{company:'Test Company',country:'Iraq',sector:'Distribution',experience:'Test experience',products:'Oil',cooperation_type:'distribution',captcha:'7',consent:'on'}},
-      {route:'representative-applications',table:'representative_applications',bucket:'representative-documents',fileKey:'document',fields:{fullName:'Test User',identityCode:'12345',mobile:'09121234567',businessName:'Test business',businessType:'Distribution',facilities:'["warehouse"]',region:'Tabriz',city:'Tabriz',address:'Test address',experience:'Experience',distributionArea:'Tabriz',captcha:'7',consent:'true'}},
+      {route:'contact-submissions',table:'contact_submissions',bucket:'contact-attachments',fileKey:'attachment',fields:{name:'Test User',mobile:'09121234567',email:'test@example.test',subject:'Integration test',destination:'sales',message:'Test message',consent:'on'}},
+      {route:'job-applications',table:'job_applications',bucket:'job-resumes',fileKey:'resume',fields:{name:'Test User',mobile:'09121234567',email:'test@example.test',expertise:'Engineering',position:'general',consent:'on'}},
+      {route:'international-inquiries',table:'international_inquiries',bucket:'international-profiles',fileKey:'profile',fields:{company:'Test Company',country:'Iraq',sector:'Distribution',experience:'Test experience',products:'Oil',cooperation_type:'distribution',consent:'on'}},
+      {route:'representative-applications',table:'representative_applications',bucket:'representative-documents',fileKey:'document',fields:{fullName:'Test User',identityCode:'12345',mobile:'09121234567',businessName:'Test business',businessType:'Distribution',facilities:'["warehouse"]',region:'Tabriz',city:'Tabriz',address:'Test address',experience:'Experience',distributionArea:'Tabriz',consent:'true'}},
     ];
     for(const item of forms) {
-      const form=new FormData();for(const [k,v] of Object.entries(item.fields))if(v!==undefined)form.set(k,v);
+      const form=new FormData();for(const [k,v] of Object.entries({...item.fields,...(await captcha())}))if(v!==undefined)form.set(k,v);
       form.set(item.fileKey,new File(['%PDF-1.4 private'],'private.pdf',{type:'application/pdf'}));
-      const response=await fetch(base+'/api/'+item.route,{method:'POST',body:form});assert.equal(response.status,201,item.route);
+      const response=await fetch(base+'/api/'+item.route,{method:'POST',headers:{Origin:base!},body:form});assert.equal(response.status,201,item.route);
       const payload=await response.json();assert.ok(payload.trackingCode);tracking.push({table:item.table,code:payload.trackingCode});
       const row=await backend(async db=>(await db.execute(sql`select * from ${sql.identifier(item.table)} where tracking_code=${payload.trackingCode}`)).rows[0]);
       const path=String(row.attachment_path??row.resume_url??row.company_profile_path??row.document_path);uploaded.push({bucket:item.bucket,path});
@@ -62,15 +64,15 @@ httpTest('production HTTP: locales, authentication, roles, uploads, submissions,
     await backend(db=>db.execute(sql`update admin_settings set login_method='both',sms_provider='kavenegar',sms_template_key='test' where id=true`));
     const otpHash=await hashPassword('123456');
     await backend(db=>db.execute(sql`insert into private.otp_challenges(phone,user_id,code_hash,expires_at,resend_at) values(${phone},${ids[0]},${otpHash},now()+interval '2 minutes',now()+interval '1 minute')`));
-    assert.equal((await post('/api/auth/otp-verify',{phone,token:'000000',captcha:'7'})).status,401);
-    const otpResults=await Promise.all([post('/api/auth/otp-verify',{phone,token:'123456',captcha:'7'}),post('/api/auth/otp-verify',{phone,token:'123456',captcha:'7'})]);
+    assert.equal((await post('/api/auth/otp-verify',{phone,token:'000000',...(await captcha())})).status,401);
+    const otpResults=await Promise.all([captcha().then(value=>post('/api/auth/otp-verify',{phone,token:'123456',...value})),captcha().then(value=>post('/api/auth/otp-verify',{phone,token:'123456',...value}))]);
     assert.deepEqual(otpResults.map(r=>r.status).sort(),[200,401]);
     await backend(db=>db.execute(sql`update profiles set is_active=false where id=${ids[1]}`));
     assert.equal((await fetch(base+'/admin',{headers:{Cookie:seoCookie},redirect:'manual'})).status,307);
     assert.equal((await post('/api/auth/logout',{},cookie)).status,200);
     assert.equal((await fetch(base+'/admin',{headers:{Cookie:cookie},redirect:'manual'})).status,307);
   }finally {
-    await backend(db=>db.execute(sql`update admin_settings set login_method='password',sms_provider=null,sms_template_key=null where id=true`));
+    await backend(db=>db.execute(sql`update admin_settings set login_method='password',sms_provider=null,sms_template_key=null,require_captcha=false where id=true`));
     for(const item of uploaded)await storage(true).from(item.bucket).remove([item.path]);
     for(const row of tracking)await backend(db=>db.execute(sql`delete from ${sql.identifier(row.table)} where tracking_code=${row.code}`));
     for(const id of ids)await backend(db=>db.execute(sql`delete from private.users where id=${id}`));

@@ -1,5 +1,19 @@
 # Development log
 
+## 2026-09-12 — Security, media persistence, dark mode, and editorial fixes
+
+- Replaced the shared static `3 + 4 = 7` captcha in authentication, public submission forms, representative application, tracking tools, and legacy form components with a short-lived HMAC-signed challenge. The server validates the signed token and answer; static answers are no longer accepted. Added `CAPTCHA_SECRET` documentation.
+- Added same-origin enforcement to all public submission endpoints so cross-site POSTs cannot bypass the browser form boundary.
+- Hardened the local media backend with an absolute upload root, traversal containment check, explicit Docker upload volume, and stable `Last-Modified` response metadata. The application continues to serve managed media through `/api/files/` without expiring URLs; Dokploy must mount `/app/data/uploads` persistently.
+- Added legacy Storage URL normalization in the shared admin upload control so old public, signed, or authenticated Storage links become stable `/api/files/` links when content is edited again.
+- Fixed editorial updates so `is_published` and `is_featured` are submitted explicitly and preserved while editing. Existing publication timestamps are retained instead of being replaced on every text edit.
+- Added a contrast pass for dark mode across public forms, representative cards, admin cards, inputs, selects, textareas, upload controls, and review panels. Redesigned representative information cards with structured contact details and accessible contrast.
+- Added the manager-controlled `require_captcha` switch to every captcha-protected route and form; it defaults to disabled and is exposed at `/admin/settings`. Migration `drizzle/0005_fresh_shinobi_shaw.sql` updates both the database default and the existing singleton row.
+- Removed remaining runtime reliance on Supabase Storage; the active application uses the local PostgreSQL/Drizzle repository and persistent filesystem storage. Supabase references are limited to the explicit historical import utility and legacy migration documentation.
+- Fixed managed file response handling for normalized `/api/files/...` URLs, lower-case MIME detection, and image optimization warnings in public/editorial/admin previews. Legacy admin preview URLs remain intentionally supported during content cleanup.
+- Affected files: `lib/captcha.ts`, `app/api/captcha/route.ts`, public/auth form components and API routes, `lib/storage/files.ts`, `app/api/files/[bucket]/[...path]/route.ts`, `Dockerfile`, `drizzle/0005_fresh_shinobi_shaw.sql`, editorial admin actions/form, image components, `app/globals.css`, `.env.example`, and `docs/DEPLOYMENT.md`.
+- Verification: `corepack pnpm typecheck` and `corepack pnpm lint` pass with no warnings or errors.
+
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 

@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { SearchIcon, ShieldIcon } from "@/components/icons";
 import type { Locale } from "@/lib/i18n";
+import { DynamicCaptcha } from "@/components/dynamic-captcha";
 
 type FaqItem = { category: string; question: string; answer: string };
 
@@ -35,7 +36,7 @@ export function TrackingLookup({ locale }: { locale: Locale }) {
       <header><span>{fa ? "استعلام وضعیت" : "Status lookup"}</span><h2 id="tracking-form-title">{fa ? "اطلاعات درخواست را وارد کنید" : "Enter request details"}</h2><p>{fa ? "کد پیگیری را دقیقاً مطابق پیام تأیید و شماره موبایل را با ارقام انگلیسی وارد کنید." : "Enter the tracking code exactly as shown in your confirmation and use Latin digits for mobile."}</p></header>
       <label><span>{fa ? "کد پیگیری" : "Tracking code"}</span><input required name="trackingCode" dir="ltr" autoComplete="off" minLength={6} placeholder="DST-XXXXXXXX" /></label>
       <label><span>{fa ? "شماره موبایل" : "Mobile number"}</span><input required name="mobile" dir="ltr" inputMode="tel" autoComplete="tel" pattern="09[0-9]{9}" placeholder="09xxxxxxxxx" /></label>
-      <label><span>{fa ? "پرسش امنیتی: حاصل ۳ + ۴" : "Security check: 3 + 4"}</span><input required name="captcha" inputMode="numeric" pattern="7" placeholder={fa ? "پاسخ" : "Answer"} /></label>
+      <DynamicCaptcha locale={locale} className="tracking-captcha" />
       <button className="button button-primary" type="submit">{fa ? "بررسی وضعیت درخواست" : "Check request status"}</button>
       {notice ? <div className="tracking-service-notice" role="status"><ShieldIcon className="size-6" /><div><strong>{fa ? "سامانه پیگیری آنلاین هنوز متصل نشده است" : "Online tracking is not connected yet"}</strong><p>{fa ? "اطلاعات واردشده ارسال یا ذخیره نشد. برای پیگیری، کد خود را از طریق صفحه تماس با ما در اختیار واحد مربوط قرار دهید." : "Your information was not sent or stored. Please share your code with the relevant team through the contact page."}</p><Link href={`/${locale}/contact`}>{fa ? "ارتباط با واحد پاسخ‌گویی" : "Contact support"}</Link></div></div> : null}
     </form>

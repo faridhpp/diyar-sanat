@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- managed admin previews may use legacy URLs */
 import { AdminUploadField } from "@/components/admin-upload-field";
 import { requireStaff } from "@/lib/admin/auth";
 import { createClient } from "@/lib/db/server";

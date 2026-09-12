@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { MailIcon, MapPinIcon, PhoneIcon } from "@/components/icons";
 import { IranMapMark } from "@/components/iran-map-mark";
 import type { Locale } from "@/lib/i18n";
@@ -64,10 +65,12 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
                   {mark.html ? (
                     <span dangerouslySetInnerHTML={{ __html: mark.html }} />
                   ) : mark.imageUrl ? (
-                    <img
+                    <Image
                       src={mark.imageUrl}
                       alt={mark.label}
-                      loading="lazy"
+                      width={240}
+                      height={82}
+                      unoptimized
                       style={{ display: "block", maxWidth: "100%", maxHeight: 82, margin: "auto", objectFit: "contain" }}
                     />
                   ) : (

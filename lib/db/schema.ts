@@ -236,7 +236,7 @@ export const admin_settings = pgTable("admin_settings", {
 	sms_template_key: text(),
 	otp_ttl_seconds: integer().default(sql.raw("120")).notNull(),
 	otp_resend_seconds: integer().default(sql.raw("60")).notNull(),
-	require_captcha: boolean().default(sql.raw("true")).notNull(),
+	require_captcha: boolean().default(sql.raw("false")).notNull(),
 	updated_by: uuid(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updated_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),

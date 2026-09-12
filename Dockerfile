@@ -20,6 +20,7 @@ COPY --from=build --chown=nextjs:nextjs /app/dist-tools ./tools
 COPY --chown=nextjs:nextjs scripts/docker-start.mjs ./tools/start.mjs
 COPY --chown=nextjs:nextjs drizzle ./drizzle
 USER nextjs
+VOLUME ["/app/data/uploads"]
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "tools/start.mjs"]

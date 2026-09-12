@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- managed admin previews may use legacy URLs */
 import Link from "next/link";
 import { AdminUploadField } from "@/components/admin-upload-field";
 import { RichMarkdownEditor } from "@/components/rich-markdown-editor";
@@ -156,8 +157,8 @@ function EditorialForm({ categories, item, translations }: { categories: Categor
       <label><span>لینک فراخوان</span><input name="cta_url" dir="ltr" defaultValue={item?.cta_url ?? ""} placeholder="/contact" /></label>
       <label><span>ترتیب</span><input name="position" type="number" min="0" defaultValue={item?.position ?? 0} /></label>
       <div className="admin-product-checks">
-        <label><input type="checkbox" name="is_featured" defaultChecked={item?.is_featured} /><span>ویژه</span></label>
-        <label><input type="checkbox" name="is_published" defaultChecked={item?.is_published} /><span>انتشار</span></label>
+        <label><input type="hidden" name="is_featured" value="false" /><input type="checkbox" name="is_featured" value="true" defaultChecked={item?.is_featured} /><span>ویژه</span></label>
+        <label><input type="hidden" name="is_published" value="false" /><input type="checkbox" name="is_published" value="true" defaultChecked={item?.is_published} /><span>انتشار</span></label>
       </div>
       <button>{item ? "ذخیره تغییرات" : "ثبت محتوا"}</button>
     </form>

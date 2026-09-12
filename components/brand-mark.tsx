@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { CSSProperties } from "react";
 import type { Locale } from "@/lib/i18n";
 
@@ -31,9 +32,12 @@ export function BrandMark({
     <Link href={`/${locale}`} className="brand-mark" aria-label={brandTitle}>
       <span className="brand-symbol" aria-hidden="true" style={uploadedLogoStyle}>
         {logoUrl ? (
-          <img
+          <Image
             src={logoUrl}
             alt=""
+            width={96}
+            height={96}
+            unoptimized
             style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
           />
         ) : (

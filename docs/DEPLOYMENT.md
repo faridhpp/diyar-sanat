@@ -1,4 +1,4 @@
-# Dokploy deployment and Supabase cutover
+# Dokploy deployment and legacy data import
 
 ## Deploy with your existing Dokploy PostgreSQL
 
@@ -23,7 +23,8 @@
    media and private attachments across redeploys. The container runs as UID/GID
    **1001**; a bind mount must be writable by that user.
 
-`DATABASE_URL` is the only required environment variable. The supplied database
+`DATABASE_URL` is the only required environment variable. Set a separate high-entropy
+`CAPTCHA_SECRET` in production; local development falls back to `DATABASE_URL`. The supplied database
 user must be able to apply the existing migrations (create schemas/tables/roles)
 and assume `app_visitor`, `app_staff`, and `app_backend`. The database owner
 credential provided by Dokploy is suitable. Application queries explicitly use
@@ -92,9 +93,9 @@ of silently discarding columns.
 
 File URLs outside the source Storage host (third-party media) remain unchanged.
 If the source used a separate media CDN URL, normalize those URLs to the source
-Storage URL before import or review/update them afterward. The optional
-`LEGACY_MEDIA_URL` build setting permits Next image optimization for an old
-Storage host during a staged transition; the standard cutover copies files.
+Storage URL before import or review/update them afterward. The web application
+itself has no Supabase runtime dependency; this section documents only the
+one-time legacy import utility.
 
 ## Schema changes and deployment operations
 

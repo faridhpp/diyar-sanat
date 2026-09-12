@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Image from "next/image";
 import { parseMarkdownBlocks, safeMarkdownUrl, tokenizeMarkdownInline } from "@/lib/markdown";
 import styles from "./rich-markdown-editor.module.css";
 
@@ -29,7 +30,7 @@ function Preview({ value }: { value: string }) {
         ? <h2 key={index}><PreviewInline text={block.text} /></h2>
         : <h3 key={index}><PreviewInline text={block.text} /></h3>;
       if (block.type === "paragraph") return <p key={index}><PreviewInline text={block.text} /></p>;
-      if (block.type === "image") return <figure key={index}><img src={block.src} alt={block.alt} />{block.alt ? <figcaption>{block.alt}</figcaption> : null}</figure>;
+      if (block.type === "image") return <figure key={index}><Image src={block.src} alt={block.alt} width={1200} height={800} sizes="(max-width: 900px) 100vw, 840px" style={{ width: "100%", height: "auto" }} />{block.alt ? <figcaption>{block.alt}</figcaption> : null}</figure>;
       if (block.type === "list") {
         const items = block.items.map((item, itemIndex) => <li key={itemIndex}><PreviewInline text={item} /></li>);
         return block.ordered ? <ol key={index}>{items}</ol> : <ul key={index}>{items}</ul>;

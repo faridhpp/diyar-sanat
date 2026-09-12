@@ -5,6 +5,7 @@ import { repository } from '@/lib/db/query';
 import { endSession, getSessionUser, startSession } from '@/lib/auth/session';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import { sameOrigin, takeRateLimit } from '@/lib/auth/security';
+import { verifyCaptcha } from '@/lib/captcha';
 import { sendOtp } from '@/lib/sms/providers';
 
 const denied=()=>Response.json({error:'اطلاعات ورود یا کد واردشده معتبر نیست.'},{status:401});
@@ -24,7 +25,7 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     const body=await request.json();
     const {data:settings}=await repository({role:'app_visitor'}).from('admin_settings').select('*').eq('id',true).single();
     if(!settings)return Response.json({error:'ورود در دسترس نیست.'},{status:503});
-    if(settings.require_captcha&&body.captcha!=='7')return denied();
+    if(settings.require_captcha&&!verifyCaptcha(body.captcha_token,body.captcha))return denied();
     const identifier=String(action==='password'?body.email??'':body.phone??'').toLowerCase().trim();
     if(identifier.length>254||!identifier)return denied();
     // Database-backed throttles work across processes and survive restarts.

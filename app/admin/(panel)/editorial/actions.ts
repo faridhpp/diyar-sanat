@@ -8,6 +8,7 @@ import { createClient } from "@/lib/db/server";
 const val = (data: FormData, key: string, max = 10000) =>
   String(data.get(key) ?? "").trim().slice(0, max);
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const checked = (data: FormData, key: string) => data.getAll(key).some((value) => value === "true" || value === "on");
 const fail = (message: string): never =>
   redirect(`/admin/editorial?error=${encodeURIComponent(message)}`);
 
@@ -52,7 +53,7 @@ export async function saveEditorial(data: FormData) {
     fail("عنوان، نوع و نشانی هر دو زبان الزامی است");
   }
 
-  const published = data.get("is_published") === "on";
+  const published = checked(data, "is_published");
   const asset = (key: string) => {
     const value = val(data, key, 500);
     return !value || value.startsWith("/") || value.startsWith("https://")
@@ -60,20 +61,21 @@ export async function saveEditorial(data: FormData) {
       : fail("نشانی فایل معتبر نیست");
   };
 
+  const db = await createClient();
+  const { data: current } = id ? await db.from("editorial_entries").select("is_published,published_at").eq("id", id).maybeSingle() : { data: null };
   const base = {
     category_id: Number(val(data, "category_id", 20)) || null,
     kind,
     cover_image_url: asset("cover_image_url"),
     video_url: asset("video_url"),
     cta_url: asset("cta_url"),
-    is_featured: data.get("is_featured") === "on",
+    is_featured: checked(data, "is_featured"),
     is_published: published,
-    published_at: published ? new Date().toISOString() : null,
+    published_at: published ? (current?.published_at ?? new Date().toISOString()) : null,
     position: Math.max(0, Number(val(data, "position", 6)) || 0),
     updated_by: user.id,
   };
 
-  const db = await createClient();
   let created = false;
   let resolvedEntryId: number;
 

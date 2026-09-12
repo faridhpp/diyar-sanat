@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { headingId, parseMarkdownBlocks, tokenizeMarkdownInline } from "@/lib/markdown";
 import styles from "./article-markdown.module.css";
 
@@ -25,7 +26,7 @@ function Blocks({ source, keyPrefix }: { source: string; keyPrefix: string }) {
         : <h3 className={styles.h3} id={block.id} key={key}><Inline text={block.text} /></h3>;
     }
     if (block.type === "paragraph") return <p key={key}><Inline text={block.text} /></p>;
-    if (block.type === "image") return <figure className={styles.figure} key={key}><img src={block.src} alt={block.alt} loading="lazy" />{block.alt ? <figcaption>{block.alt}</figcaption> : null}</figure>;
+    if (block.type === "image") return <figure className={styles.figure} key={key}><Image src={block.src} alt={block.alt} width={1200} height={800} sizes="(max-width: 900px) 100vw, 840px" style={{ width: "100%", height: "auto" }} />{block.alt ? <figcaption>{block.alt}</figcaption> : null}</figure>;
     if (block.type === "list") {
       const items = block.items.map((item, itemIndex) => <li key={`${key}-${itemIndex}`}><Inline text={item} /></li>);
       return block.ordered ? <ol key={key}>{items}</ol> : <ul key={key}>{items}</ul>;

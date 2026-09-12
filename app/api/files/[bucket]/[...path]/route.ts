@@ -11,9 +11,10 @@ export async function GET(request:Request,{params}:{params:Promise<{bucket:strin
     if(!user||!['manager','admin'].includes(user.role))return new Response(null,{status:403});
   }
   try {
+    // Keep URL segments POSIX-shaped on every host before validating them.
     const filename=filePath(bucket,path.join('/')),info=await stat(filename);
     if(!info.isFile())return new Response(null,{status:404});
-    const type=fileTypes[path.at(-1)?.split('.').pop()||'']||'application/octet-stream';
+    const type=fileTypes[path.at(-1)?.split('.').pop()?.toLowerCase()||'']||'application/octet-stream';
     let start=0,end=info.size-1,status=200;
     const range=request.headers.get('range');
     if(range){
@@ -25,7 +26,7 @@ export async function GET(request:Request,{params}:{params:Promise<{bucket:strin
       status=206;
     }
     const headers:Record<string,string>={
-      'Content-Type':type,'Content-Length':String(end-start+1),'Accept-Ranges':'bytes',
+      'Content-Type':type,'Content-Length':String(end-start+1),'Accept-Ranges':'bytes','Last-Modified':info.mtime.toUTCString(),
       'X-Content-Type-Options':'nosniff',
       'Content-Security-Policy':"default-src 'none'; sandbox",
       'Cache-Control':bucket==='site-media'?'public, max-age=31536000, immutable':'private, no-store',

@@ -155,7 +155,7 @@ function AboutHeroImageEditor({ value }: { value: string }) {
       <form action={saveAboutHeroImage} className="admin-content-form">
         {value ? (
           <div style={{ overflow: "hidden", borderRadius: 14, border: "1px solid var(--admin-line, #dfe5ea)", background: "#f5f7f9" }}>
-            <img src={value} alt="" style={{ width: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} />
+            <img src={value} alt="" style={{ width: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} /> {/* eslint-disable-line @next/next/no-img-element -- admin preview accepts a managed or external URL */}
           </div>
         ) : null}
         <AdminUploadField
