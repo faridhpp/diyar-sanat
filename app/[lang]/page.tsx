@@ -18,6 +18,7 @@ import { notFound } from "next/navigation";
 import { getManagedTranslations } from "@/lib/site-content";
 import { createClient } from "@/lib/db/server";
 import { HomepageHero, type HomeSlide } from "@/components/homepage-hero";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 export default async function HomePage({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
@@ -37,7 +38,7 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
   ]);
   const managedSlides: HomeSlide[] = (heroRows ?? []).map((row) => ({
     id: row.id,
-    image_url: row.image_url,
+    image_url: normalizeManagedMediaUrl(row.image_url),
     alt: fa ? row.alt_fa : row.alt_en,
     kicker: fa ? row.kicker_fa : row.kicker_en,
     title: fa ? row.title_fa : row.title_en,
@@ -206,8 +207,8 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             <Link className="button button-secondary" href={`/${lang}#contact`}>{dict.actions.more}</Link>
           </div>
           <div className="factory-teaser" aria-label={fa ? "کاور تیزر معرفی کارخانه دیار صنعت تبریز" : "Diyar Sanat Tabriz factory teaser cover"}>
-            <Image src={homeVideo?.cover_url || "/images/factory-teaser-cover.png"} alt={fa ? "نمای سینمایی خط تولید و کارخانه دیار صنعت" : "Cinematic view of the Diyar Sanat production line and factory"} fill sizes="(max-width: 800px) 100vw, 68vw" />
-            {homeVideo?.video_url ? <video className="factory-managed-video" controls preload="metadata" poster={homeVideo.cover_url ?? undefined}><source src={homeVideo.video_url} /></video> : null}
+            <Image src={normalizeManagedMediaUrl(homeVideo?.cover_url || "/images/factory-teaser-cover.png")} alt={fa ? "نمای سینمایی خط تولید و کارخانه دیار صنعت" : "Cinematic view of the Diyar Sanat production line and factory"} fill sizes="(max-width: 800px) 100vw, 68vw" />
+            {homeVideo?.video_url ? <video className="factory-managed-video" controls preload="metadata" poster={normalizeManagedMediaUrl(homeVideo.cover_url ?? "")}><source src={normalizeManagedMediaUrl(homeVideo.video_url)} /></video> : null}
             <div className="factory-teaser-shade" aria-hidden="true" />
             <div className="teaser-caption"><span>{(fa ? homeVideo?.title_fa : homeVideo?.title_en) || (fa ? "تیزر معرفی کارخانه" : "Factory introduction")}</span><strong>{(fa ? homeVideo?.subtitle_fa : homeVideo?.subtitle_en) || (fa ? "از تولید دقیق تا حرکت رو به جلو" : "From precise production to moving forward")}</strong></div>
             <span className="teaser-play" aria-hidden="true"><i /></span>

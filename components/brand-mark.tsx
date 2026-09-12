@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
 import type { Locale } from "@/lib/i18n";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 type Props = {
   locale: Locale;
@@ -24,16 +25,17 @@ export function BrandMark({
   const brandTitle = title?.trim() || fallbackTitle;
   const mainLabel = primaryText?.trim() || brandTitle;
   const secondLabel = secondaryText?.trim() || "";
-  const uploadedLogoStyle: CSSProperties | undefined = logoUrl
+  const normalizedLogoUrl = normalizeManagedMediaUrl(logoUrl ?? "");
+  const uploadedLogoStyle: CSSProperties | undefined = normalizedLogoUrl
     ? { background: "transparent", border: 0, borderRadius: 0, boxShadow: "none" }
     : undefined;
 
   return (
     <Link href={`/${locale}`} className="brand-mark" aria-label={brandTitle}>
       <span className="brand-symbol" aria-hidden="true" style={uploadedLogoStyle}>
-        {logoUrl ? (
+        {normalizedLogoUrl ? (
           <Image
-            src={logoUrl}
+            src={normalizedLogoUrl}
             alt=""
             width={96}
             height={96}

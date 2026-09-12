@@ -1,6 +1,7 @@
 import "server-only";
 import type { Locale } from "@/lib/i18n";
 import { createClient } from "@/lib/db/server";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 import { hasDatabaseEnv } from "@/lib/db/env";
 
 export type MediaKind = "news" | "blog" | "tutorial";
@@ -358,11 +359,11 @@ export async function getMediaArticlesFromDatabase(locale: Locale) {
               title: item.title,
               excerpt: item.excerpt ?? "",
               image:
-                entry.cover_image_url ?? "/images/factory-teaser-cover.png",
+                normalizeManagedMediaUrl(entry.cover_image_url ?? "/images/factory-teaser-cover.png"),
               date: (entry.published_at ?? entry.id.toString()).slice(0, 10),
               readingTime: Math.max(1, Math.ceil(words / 200)),
               featured: entry.is_featured,
-              videoUrl: entry.video_url ?? undefined,
+              videoUrl: entry.video_url ? normalizeManagedMediaUrl(entry.video_url) : undefined,
               sections: markdownSections(item.body_markdown),
             },
           ];

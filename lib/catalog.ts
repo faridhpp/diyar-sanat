@@ -4,6 +4,7 @@ import type { Locale } from "@/lib/i18n";
 import { createClient } from "@/lib/db/server";
 import { hasDatabaseEnv } from "@/lib/db/env";
 import { brandName, type BrandCode } from "@/lib/brands";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 export type CatalogProduct = {
   id: number;
@@ -233,7 +234,7 @@ export async function getCatalog(locale: Locale): Promise<CatalogResult> {
                 name: copy.name,
                 description: copy.short_description ?? "",
                 specification: copy.key_specification ?? "",
-                imageUrl: product.image_url,
+                imageUrl: normalizeManagedMediaUrl(product.image_url),
                 featured: product.is_featured,
                 position: product.position,
                 brandCode: ((dbBrands?.find(brand=>brand.id===product.brand_id)?.code??"diyar-shimi") as BrandCode),

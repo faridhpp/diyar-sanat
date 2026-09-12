@@ -9,6 +9,7 @@ import { findCatalogProduct, getCatalog, productFallbackImage } from "@/lib/cata
 import { createClient } from "@/lib/db/server";
 import { getDictionary, isLocale } from "@/lib/i18n";
 import { getManagedTranslations } from "@/lib/site-content";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 type Props = { params: Promise<{ lang: string; slug: string }> };
 type GalleryRow = { file_url: string; alt_fa: string; alt_en: string; is_primary: boolean };
@@ -65,11 +66,11 @@ export default async function ProductDetailPage({ params }: Props) {
       db.from("product_downloads").select("file_url,title_fa,title_en,file_type").eq("product_id", product.id).order("position"),
       getManagedTranslations(lang, `product-${product.id}`),
     ]);
-    gallery = (galleryResult.data ?? []) as GalleryRow[];
+    gallery = (galleryResult.data ?? []).map((item) => ({ ...item, file_url: normalizeManagedMediaUrl(item.file_url) })) as GalleryRow[];
     features = (featureResult.data ?? []) as FeatureRow[];
     applications = (applicationResult.data ?? []) as ApplicationRow[];
     specifications = (specificationResult.data ?? []) as SpecRow[];
-    downloads = (downloadResult.data ?? []) as DownloadRow[];
+    downloads = (downloadResult.data ?? []).map((item) => ({ ...item, file_url: normalizeManagedMediaUrl(item.file_url) })) as DownloadRow[];
     landing = managedLanding;
   }
 

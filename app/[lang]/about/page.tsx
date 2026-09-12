@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getManagedMetadata, getManagedTranslations } from "@/lib/site-content";
 import { isLocale } from "@/lib/i18n";
 import styles from "./about.module.css";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 type Props = { params: Promise<{ lang: string }> };
 
@@ -33,7 +34,7 @@ export default async function AboutPage({ params }: Props) {
   const managed = await getManagedTranslations(lang, "about");
   const t = (key: string, faFallback: string, enFallback: string) =>
     managed[key]?.trim() || (fa ? faFallback : enFallback);
-  const heroImage = managed["hero.image_url"]?.trim() || ABOUT_HERO_FALLBACK;
+  const heroImage = normalizeManagedMediaUrl(managed["hero.image_url"]?.trim() || ABOUT_HERO_FALLBACK);
 
   const facts = [
     {

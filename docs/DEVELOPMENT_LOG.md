@@ -1,5 +1,12 @@
 # Development log
 
+## 2026-09-12 — Canonicalize media URLs after domain changes
+
+- Normalized absolute legacy `/api/files/...` URLs, including records still pointing at `nex.dyarsanat.com`, to same-origin relative paths before rendering products, homepage media, editorial covers, videos, galleries, and downloads.
+- Updated the public media route to return concrete image bytes to Next's optimizer while retaining range streaming for video and documents.
+- This prevents a domain change from preserving an obsolete host in database content. It does not recreate bytes missing from the Dokploy upload volume; those require a volume restore or re-upload.
+- Affected files: `lib/storage/urls.ts`, catalog/media loaders, homepage and product routes.
+
 ## 2026-09-12 — Database grants, durable media diagnostics, and contact phones
 
 - Added migration `drizzle/0006_regrant_staff_function_access.sql` to restore `USAGE`/`EXECUTE` for `app_staff` on the private RLS helper functions without exposing them to `app_visitor`; this fixes PostgreSQL `42501 permission denied for function has_staff_role` during product reads.

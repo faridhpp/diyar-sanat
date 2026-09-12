@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { getSessionUser } from '@/lib/auth/session';
@@ -33,6 +33,12 @@ export async function GET(request:Request,{params}:{params:Promise<{bucket:strin
       'Content-Disposition':`${bucket==='site-media'?'inline':'attachment'}; filename="${path.at(-1)}"`,
     };
     if(status===206)headers['Content-Range']=`bytes ${start}-${end}/${info.size}`;
-    return new Response(Readable.toWeb(createReadStream(filename,{start,end})) as ReadableStream,{status,headers});
+    // Next's image optimizer consumes the response internally. Returning a
+    // concrete body for images avoids empty-body failures from Web-stream
+    // conversion while keeping range streaming for video and documents.
+    const body = type.startsWith('image/')
+      ? await readFile(filename)
+      : Readable.toWeb(createReadStream(filename,{start,end})) as ReadableStream;
+    return new Response(body,{status,headers});
   }catch{return new Response(null,{status:404});}
 }

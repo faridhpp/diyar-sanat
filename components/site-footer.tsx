@@ -8,6 +8,7 @@ import { getFooterNavigation } from "@/lib/navigation";
 import { getManagedTranslations } from "@/lib/site-content";
 import { sanitizeCredentialHtml } from "@/lib/content-embeds";
 import { parsePhoneNumbers, phoneHref } from "@/lib/contact";
+import { normalizeManagedMediaUrl } from "@/lib/storage/urls";
 
 type CredentialMark = {
   label: string;
@@ -30,13 +31,13 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
   const credentialMarks: CredentialMark[] = [
     {
       label: editableLabel("credentials.mark1.label", fa ? "ساخت ایران" : "Made in Iran"),
-      imageUrl: raw("credentials.mark1.image_url"),
+      imageUrl: normalizeManagedMediaUrl(raw("credentials.mark1.image_url")),
       html: sanitizeCredentialHtml(raw("credentials.mark1.html")),
       fallbackIran: true,
     },
     {
       label: raw("credentials.mark2.label"),
-      imageUrl: raw("credentials.mark2.image_url"),
+      imageUrl: normalizeManagedMediaUrl(raw("credentials.mark2.image_url")),
       html: sanitizeCredentialHtml(raw("credentials.mark2.html")),
     },
   ];
