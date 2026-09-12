@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 // Migrations and the application use the existing Dokploy DATABASE_URL.
 // No database container or additional login credentials are provisioned here.
@@ -18,6 +20,12 @@ function run(script) {
 }
 try {
   if(!process.env.DATABASE_URL)throw new Error('Missing DATABASE_URL');
+  const uploadRoot=process.env.UPLOAD_DIR||'/app/data/uploads';
+  await mkdir(uploadRoot,{recursive:true});
+  const probe=join(uploadRoot,`.startup-write-test-${process.pid}`);
+  await writeFile(probe,'ok',{flag:'wx',mode:0o600});
+  await unlink(probe);
+  console.info(`[storage] upload root is writable: ${uploadRoot}`);
   await run('tools/migrate.cjs');
   if(!stopping)await run('tools/bootstrap.cjs');
   if(!stopping)await run('server.js');

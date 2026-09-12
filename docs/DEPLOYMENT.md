@@ -23,6 +23,12 @@
    media and private attachments across redeploys. The container runs as UID/GID
    **1001**; a bind mount must be writable by that user.
 
+Do not replace this mount with a new empty volume during a redeploy. The database
+stores stable `/api/files/...` paths, while the file bytes live in this volume;
+if the old volume was already removed, restore it from the upload backup before
+starting the application. Startup now performs a write probe and logs the active
+`UPLOAD_DIR` so a broken or read-only mount fails early.
+
 `DATABASE_URL` is the only required environment variable. Set a separate high-entropy
 `CAPTCHA_SECRET` in production; local development falls back to `DATABASE_URL`. The supplied database
 user must be able to apply the existing migrations (create schemas/tables/roles)

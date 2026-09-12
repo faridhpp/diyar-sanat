@@ -1,5 +1,12 @@
 # Development log
 
+## 2026-09-12 — Database grants, durable media diagnostics, and contact phones
+
+- Added migration `drizzle/0006_regrant_staff_function_access.sql` to restore `USAGE`/`EXECUTE` for `app_staff` on the private RLS helper functions without exposing them to `app_visitor`; this fixes PostgreSQL `42501 permission denied for function has_staff_role` during product reads.
+- Added a writable upload-root probe before migrations start and rejected zero-byte file responses. A Dokploy deployment must keep the existing persistent mount at `/app/data/uploads`; a newly-created empty volume cannot restore files whose bytes were already deleted.
+- Added a single admin footer editor with add/remove controls for up to ten localized contact phone numbers. The values are stored in both footer and contact-page translation keys, normalized, and rendered as `tel:` links.
+- Affected routes/files: `/admin/translations`, `/[lang]/contact`, the site footer, file streaming, Docker startup, contact helper, and PostgreSQL migration. Verification is recorded after the local checks complete.
+
 ## 2026-09-12 — Security, media persistence, dark mode, and editorial fixes
 
 - Replaced the shared static `3 + 4 = 7` captcha in authentication, public submission forms, representative application, tracking tools, and legacy form components with a short-lived HMAC-signed challenge. The server validates the signed token and answer; static answers are no longer accepted. Added `CAPTCHA_SECRET` documentation.

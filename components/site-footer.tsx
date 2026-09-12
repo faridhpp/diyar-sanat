@@ -7,6 +7,7 @@ import { getDictionary } from "@/lib/i18n";
 import { getFooterNavigation } from "@/lib/navigation";
 import { getManagedTranslations } from "@/lib/site-content";
 import { sanitizeCredentialHtml } from "@/lib/content-embeds";
+import { parsePhoneNumbers, phoneHref } from "@/lib/contact";
 
 type CredentialMark = {
   label: string;
@@ -24,6 +25,7 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
   const raw = (key: string) => managed[key]?.trim() || "";
   const editableLabel = (key: string, fallback: string) =>
     Object.prototype.hasOwnProperty.call(managed, key) ? raw(key) : fallback;
+  const phoneNumbers = parsePhoneNumbers(managed["contact.phones"] || managed["contact.phone"]);
 
   const credentialMarks: CredentialMark[] = [
     {
@@ -85,7 +87,11 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
         <div className="footer-contact">
           <h3>{t("contact.title", fa ? "اطلاعات تماس" : "Contact information")}</h3>
           <p><MapPinIcon className="size-4" />{t("contact.location", fa ? "تبریز، ایران" : "Tabriz, Iran")}</p>
-          <p><PhoneIcon className="size-4" />{t("contact.phone", fa ? "شماره رسمی در انتظار تأیید" : "Official number pending approval")}</p>
+          {phoneNumbers.length ? phoneNumbers.map((phone) => (
+            <a href={phoneHref(phone)} hrefLang={locale} dir="ltr" key={phone}>
+              <PhoneIcon className="size-4" />{phone}
+            </a>
+          )) : <p><PhoneIcon className="size-4" />{t("contact.phone", fa ? "شماره رسمی در انتظار تأیید" : "Official number pending approval")}</p>}
           <a href={`mailto:${t("contact.email", "info@diyarsanat.com")}`} dir="ltr"><MailIcon className="size-4" />{t("contact.email", "info@diyarsanat.com")}</a>
         </div>
         <div>

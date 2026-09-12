@@ -5,6 +5,7 @@ import { InnerPageHero } from "@/components/inner-page-hero";
 import { isLocale } from "@/lib/i18n";
 import { getManagedMetadata, getManagedTranslations } from "@/lib/site-content";
 import { normalizeMapEmbed } from "@/lib/content-embeds";
+import { parsePhoneNumbers, phoneHref } from "@/lib/contact";
 
 type Props = { params: Promise<{ lang: string }> };
 
@@ -31,6 +32,7 @@ export default async function ContactPage({ params }: Props) {
   const managed = await getManagedTranslations(lang, "contact");
   const t = (key: string, fallback: string) => managed[key]?.trim() || fallback;
   const email = t("office.email", "info@diyarsanat.com");
+  const phoneNumbers = parsePhoneNumbers(managed["office.phones"] || managed["office.phone"]);
   const mapSrc =
     normalizeMapEmbed(managed["map.embed_url"] ?? "") ??
     "https://www.openstreetmap.org/export/embed.html?bbox=46.18%2C38.02%2C46.38%2C38.14&layer=mapnik";
@@ -57,7 +59,7 @@ export default async function ContactPage({ params }: Props) {
           </h2>
           <dl>
             <div><dt>{fa ? "ایمیل" : "Email"}</dt><dd><a href={`mailto:${email}`} dir="ltr">{email}</a></dd></div>
-            <div><dt>{fa ? "تلفن" : "Phone"}</dt><dd>{t("office.phone", fa ? "در انتظار تأیید رسمی" : "Pending official verification")}</dd></div>
+            <div><dt>{fa ? "تلفن" : "Phone"}</dt><dd>{phoneNumbers.length ? phoneNumbers.map((phone) => <a href={phoneHref(phone)} dir="ltr" key={phone}>{phone}</a>) : t("office.phone", fa ? "در انتظار تأیید رسمی" : "Pending official verification")}</dd></div>
             <div><dt>{fa ? "نشانی" : "Address"}</dt><dd>{t("office.address", fa ? "تبریز، ایران — نشانی دقیق در انتظار تأیید" : "Tabriz, Iran — full address pending verification")}</dd></div>
           </dl>
         </div>

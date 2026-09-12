@@ -13,7 +13,7 @@ export async function GET(request:Request,{params}:{params:Promise<{bucket:strin
   try {
     // Keep URL segments POSIX-shaped on every host before validating them.
     const filename=filePath(bucket,path.join('/')),info=await stat(filename);
-    if(!info.isFile())return new Response(null,{status:404});
+    if(!info.isFile() || info.size===0)return new Response(null,{status:404});
     const type=fileTypes[path.at(-1)?.split('.').pop()?.toLowerCase()||'']||'application/octet-stream';
     let start=0,end=info.size-1,status=200;
     const range=request.headers.get('range');

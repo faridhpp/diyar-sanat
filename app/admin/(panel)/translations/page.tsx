@@ -9,6 +9,8 @@ import {
   saveTranslation,
 } from "../content-settings-actions";
 import { HomepageMediaAdmin } from "@/components/homepage-media-admin";
+import { AdminPhoneListField } from "@/components/admin-phone-list-field";
+import { parsePhoneNumbers } from "@/lib/contact";
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
 type Row = {
@@ -29,6 +31,8 @@ type FooterTrustValues = {
   mark2LabelEn: string;
   mark2ImageUrl: string;
   mark2Html: string;
+  phoneNumbersFa: string[];
+  phoneNumbersEn: string[];
 };
 
 const pageMeta: Record<string, PageMeta> = {
@@ -71,6 +75,10 @@ const specialKeys = new Set([
   "global-footer:credentials.mark2.label",
   "global-footer:credentials.mark2.image_url",
   "global-footer:credentials.mark2.html",
+  "global-footer:contact.phone",
+  "global-footer:contact.phones",
+  "contact:office.phone",
+  "contact:office.phones",
 ]);
 
 export default async function PageContent({ searchParams }: Props) {
@@ -96,6 +104,8 @@ export default async function PageContent({ searchParams }: Props) {
     mark2LabelEn: contentValue("global-footer", "credentials.mark2.label", "en"),
     mark2ImageUrl: contentValue("global-footer", "credentials.mark2.image_url", "fa"),
     mark2Html: contentValue("global-footer", "credentials.mark2.html", "fa"),
+    phoneNumbersFa: parsePhoneNumbers(contentValue("global-footer", "contact.phones", "fa") || contentValue("global-footer", "contact.phone", "fa")),
+    phoneNumbersEn: parsePhoneNumbers(contentValue("global-footer", "contact.phones", "en") || contentValue("global-footer", "contact.phone", "en")),
   };
   const mapEmbed = contentValue("contact", "map.embed_url", "fa");
   const aboutHeroImage = contentValue("about", "hero.image_url", "fa");
@@ -215,6 +225,10 @@ function FooterTrustEditor({ values }: { values: FooterTrustValues }) {
             <AdminUploadField name="mark2_image_url" label="تصویر جایگاه دوم" folder="footer-credentials" accept="image/jpeg,image/png,image/webp" defaultValue={values.mark2ImageUrl} />
             <label><span>HTML نماد (اختیاری؛ در صورت وجود بر تصویر اولویت دارد)</span><textarea name="mark2_html" rows={6} dir="ltr" defaultValue={values.mark2Html} placeholder="کد لینک و تصویر نماد دوم" /></label>
           </div>
+        </div>
+        <div className="admin-content-languages">
+          <AdminPhoneListField name="phone_numbers_fa" label="شماره‌های تماس فارسی" values={values.phoneNumbersFa} />
+          <AdminPhoneListField name="phone_numbers_en" label="English contact phone numbers" values={values.phoneNumbersEn} />
         </div>
         <footer><small>HTML هنگام نمایش محدود به لینک و تصویر امن می‌شود؛ اسکریپت و event handler اجرا نمی‌شود.</small><button type="submit">ذخیره نمادهای فوتر</button></footer>
       </form>

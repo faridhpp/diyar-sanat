@@ -6,6 +6,7 @@ import { requireStaff } from "@/lib/admin/auth";
 import { createClient } from "@/lib/db/server";
 import type { Json } from "@/lib/db/database.types";
 import { normalizeMapEmbed } from "@/lib/content-embeds";
+import { normalizePhoneNumber } from "@/lib/contact";
 
 const v = (d: FormData, k: string, n = 6000) => String(d.get(k) ?? "").trim().slice(0, n);
 const key = /^[a-z0-9_.-]+$/;
@@ -88,8 +89,42 @@ export async function saveFooterTrustMarks(d: FormData) {
   const mark2LabelEn = v(d, "mark2_label_en", 160);
   const mark1Html = v(d, "mark1_html", 8000);
   const mark2Html = v(d, "mark2_html", 8000);
+  const phoneNumbers = (locale: "fa" | "en") => {
+    const values = d.getAll(`phone_numbers_${locale}`).map((value) => String(value).trim()).filter(Boolean);
+    const normalized = values.map(normalizePhoneNumber);
+    if (normalized.some((value) => !value)) redirect("/admin/translations?error=phone-validation");
+    return [...new Set(normalized)].slice(0, 10);
+  };
 
   const rows = (["fa", "en"] as const).flatMap((locale) => [
+    {
+      namespace: "global-footer",
+      translation_key: "contact.phones",
+      locale,
+      value: JSON.stringify(phoneNumbers(locale)),
+      description: "Contact phone numbers",
+    },
+    {
+      namespace: "global-footer",
+      translation_key: "contact.phone",
+      locale,
+      value: phoneNumbers(locale)[0] ?? "",
+      description: "Legacy primary contact phone",
+    },
+    {
+      namespace: "contact",
+      translation_key: "office.phones",
+      locale,
+      value: JSON.stringify(phoneNumbers(locale)),
+      description: "Contact page phone numbers",
+    },
+    {
+      namespace: "contact",
+      translation_key: "office.phone",
+      locale,
+      value: phoneNumbers(locale)[0] ?? "",
+      description: "Legacy primary office phone",
+    },
     {
       namespace: "global-footer",
       translation_key: "credentials.mark1.label",

@@ -7,8 +7,6 @@ RUN pnpm install --frozen-lockfile
 FROM dependencies AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG LEGACY_MEDIA_URL
-ENV LEGACY_MEDIA_URL=${LEGACY_MEDIA_URL}
 RUN pnpm build && pnpm build:tools
 
 FROM node:24-alpine AS web
