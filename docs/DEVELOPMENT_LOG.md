@@ -14,6 +14,13 @@
 - Affected files: `lib/captcha.ts`, `app/api/captcha/route.ts`, public/auth form components and API routes, `lib/storage/files.ts`, `app/api/files/[bucket]/[...path]/route.ts`, `Dockerfile`, `drizzle/0005_fresh_shinobi_shaw.sql`, editorial admin actions/form, image components, `app/globals.css`, `.env.example`, and `docs/DEPLOYMENT.md`.
 - Verification: `corepack pnpm typecheck` and `corepack pnpm lint` pass with no warnings or errors.
 
+## 2026-09-12 — Admin upload experience
+
+- Rebuilt the shared `AdminUploadField` used throughout the panel with image thumbnails, drag-and-drop, selected filename and size, XHR upload percentage, cancel action, success/error feedback, and dark-mode styling.
+- Kept the server-side file validation and persistent `/app/data/uploads` storage unchanged; the hidden form value is updated only after the server confirms the upload.
+- Affected: `components/admin-upload-field.tsx`, `app/globals.css`. No database migration.
+- Verification: `corepack pnpm typecheck` and `corepack pnpm lint` pass.
+
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 
