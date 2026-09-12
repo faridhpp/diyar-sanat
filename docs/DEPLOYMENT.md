@@ -36,6 +36,10 @@ and assume `app_visitor`, `app_staff`, and `app_backend`. The database owner
 credential provided by Dokploy is suitable. Application queries explicitly use
 those restricted roles inside transactions, preserving database RLS.
 
+Set `NEXT_DEPLOYMENT_ID` as a unique Docker build argument for every release
+(normally the Git commit SHA). Next.js uses it to detect stale browser assets
+and avoid Server Action version skew during a rolling deployment.
+
 Authentication checks the browser Origin against the request Host by default;
 keep Dokploy/Traefik's forwarded public Host. Optionally set
 `APP_URL=https://your-domain.com` to pin the permitted origin.

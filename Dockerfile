@@ -7,6 +7,8 @@ RUN pnpm install --frozen-lockfile
 FROM dependencies AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_DEPLOYMENT_ID
+ENV NEXT_DEPLOYMENT_ID=${NEXT_DEPLOYMENT_ID}
 RUN pnpm build && pnpm build:tools
 
 FROM node:24-alpine AS web

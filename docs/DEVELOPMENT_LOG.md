@@ -1,9 +1,15 @@
 # Development log
 
+## 2026-09-12 — Contact phone list redesign
+
+- Redesigned the contact-page phone presentation so every number is an independent clickable row with its own phone icon, focus state, and dark-mode contrast; removed the shared outer phone box.
+- Affected route/style: `/[lang]/contact`, `app/globals.css`.
+
 ## 2026-09-12 — Canonicalize media URLs after domain changes
 
 - Normalized absolute legacy `/api/files/...` URLs, including records still pointing at `nex.dyarsanat.com`, to same-origin relative paths before rendering products, homepage media, editorial covers, videos, galleries, and downloads.
 - Updated the public media route to return concrete image bytes to Next's optimizer while retaining range streaming for video and documents.
+- Added optional `NEXT_DEPLOYMENT_ID` build-time wiring for Next.js version-skew protection during Dokploy redeployments.
 - This prevents a domain change from preserving an obsolete host in database content. It does not recreate bytes missing from the Dokploy upload volume; those require a volume restore or re-upload.
 - Affected files: `lib/storage/urls.ts`, catalog/media loaders, homepage and product routes.
 

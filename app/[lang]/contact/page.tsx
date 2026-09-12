@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ContactSubmissionForm } from "@/components/contact-submission-form";
 import { InnerPageHero } from "@/components/inner-page-hero";
+import { PhoneIcon } from "@/components/icons";
 import { isLocale } from "@/lib/i18n";
 import { getManagedMetadata, getManagedTranslations } from "@/lib/site-content";
 import { normalizeMapEmbed } from "@/lib/content-embeds";
@@ -59,7 +60,17 @@ export default async function ContactPage({ params }: Props) {
           </h2>
           <dl>
             <div><dt>{fa ? "ایمیل" : "Email"}</dt><dd><a href={`mailto:${email}`} dir="ltr">{email}</a></dd></div>
-            <div><dt>{fa ? "تلفن" : "Phone"}</dt><dd>{phoneNumbers.length ? phoneNumbers.map((phone) => <a href={phoneHref(phone)} dir="ltr" key={phone}>{phone}</a>) : t("office.phone", fa ? "در انتظار تأیید رسمی" : "Pending official verification")}</dd></div>
+            <div className="contact-phone-field">
+              <dt>{fa ? "تلفن" : "Phone"}</dt>
+              <dd className={phoneNumbers.length ? "contact-phone-list" : undefined}>
+                {phoneNumbers.length ? phoneNumbers.map((phone) => (
+                  <a className="contact-phone-item" href={phoneHref(phone)} dir="ltr" key={phone}>
+                    <span className="contact-phone-icon" aria-hidden="true"><PhoneIcon className="size-4" /></span>
+                    <span>{phone}</span>
+                  </a>
+                )) : t("office.phone", fa ? "در انتظار تأیید رسمی" : "Pending official verification")}
+              </dd>
+            </div>
             <div><dt>{fa ? "نشانی" : "Address"}</dt><dd>{t("office.address", fa ? "تبریز، ایران — نشانی دقیق در انتظار تأیید" : "Tabriz, Iran — full address pending verification")}</dd></div>
           </dl>
         </div>
