@@ -19,6 +19,7 @@ function run(script) {
 try {
   if(!process.env.DATABASE_URL)throw new Error('Missing DATABASE_URL');
   await run('tools/migrate.cjs');
+  if(!stopping)await run('tools/bootstrap.cjs');
   if(!stopping)await run('server.js');
 } catch {
   console.error('Startup failed. Check DATABASE_URL and the preceding migration/application logs.');
