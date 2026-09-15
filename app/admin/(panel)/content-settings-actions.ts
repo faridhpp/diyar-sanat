@@ -48,6 +48,30 @@ export async function saveTranslation(d: FormData) {
   redirect("/admin/translations?saved=1");
 }
 
+export async function saveAboutHeroImage(d: FormData) {
+  await requireStaff();
+  const rawImage = v(d, "hero_image_url", 500);
+  const imageUrl = safeAsset(rawImage);
+  if (rawImage && !imageUrl) redirect("/admin/translations?error=about-hero-image");
+
+  const rows = (["fa", "en"] as const).map((locale) => ({
+    namespace: "about",
+    translation_key: "hero.image_url",
+    locale,
+    value: imageUrl ?? "",
+    description: "تصویر هیروی صفحه درباره ما",
+  }));
+  const { error } = await (await createClient()).from("site_translations").upsert(rows, {
+    onConflict: "namespace,translation_key,locale",
+  });
+  if (error) redirect("/admin/translations?error=about-hero-save");
+  revalidatePath("/admin/translations");
+  revalidatePath("/fa/about");
+  revalidatePath("/en/about");
+  revalidatePath("/", "layout");
+  redirect("/admin/translations?saved=about-hero-image#content-about");
+}
+
 export async function saveFooterTrustMarks(d: FormData) {
   await requireStaff();
   const mark1Image = safeAsset(v(d, "mark1_image_url", 500));

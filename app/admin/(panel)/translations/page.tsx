@@ -3,6 +3,7 @@ import { AdminUploadField } from "@/components/admin-upload-field";
 import { requireStaff } from "@/lib/admin/auth";
 import { createClient } from "@/lib/db/server";
 import {
+  saveAboutHeroImage,
   saveContactMapEmbed,
   saveFooterTrustMarks,
   saveTranslation,
@@ -32,7 +33,7 @@ type FooterTrustValues = {
 
 const pageMeta: Record<string, PageMeta> = {
   home: { label: "صفحه اصلی", description: "هیرو، محصولات، برندها، کارخانه، رسانه و گواهینامه‌ها" },
-  about: { label: "درباره ما", description: "معرفی شرکت، داستان و چشم‌انداز" },
+  about: { label: "درباره ما", description: "تصویر هیرو، معرفی شرکت، ارزش‌ها و چشم‌انداز" },
   contact: { label: "تماس با ما", description: "عنوان صفحه، اطلاعات دفتر و نقشه" },
   faq: { label: "پرسش‌های متداول", description: "عنوان و توضیحات صفحه پرسش‌ها" },
   "buying-guide": { label: "راهنمای خرید", description: "عنوان و معرفی راهنمای انتخاب محصول" },
@@ -43,6 +44,7 @@ const pageMeta: Record<string, PageMeta> = {
 const fieldLabels: Record<string, string> = {
   "hero.current": "عنوان مسیر صفحه", "hero.eyebrow": "عنوان کوچک", "hero.kicker": "پیش‌عنوان هیرو",
   "hero.title": "عنوان اصلی", "hero.subtitle": "زیرعنوان", "hero.description": "توضیحات هیرو",
+  "hero.image_alt": "متن جایگزین تصویر هیرو",
   "hero.badge_title": "عنوان برچسب ساخت ایران", "hero.badge_subtitle": "متن دوم برچسب",
   "products.eyebrow": "پیش‌عنوان محصولات", "products.title": "عنوان محصولات",
   "brands.eyebrow": "پیش‌عنوان برندها", "brands.title": "عنوان برندها", "brands.description": "توضیحات برندها",
@@ -50,7 +52,10 @@ const fieldLabels: Record<string, string> = {
   "media.eyebrow": "پیش‌عنوان رسانه", "media.title": "عنوان رسانه", "media.description": "توضیحات رسانه",
   "certificates.title": "عنوان مجوزها", "certificates.description": "توضیحات مجوزها",
   "story.eyebrow": "پیش‌عنوان داستان", "story.title": "عنوان داستان", "story.description": "متن داستان",
-  "vision.title": "عنوان چشم‌انداز", "vision.description": "متن چشم‌انداز",
+  "story.paragraph2": "ادامه متن معرفی شرکت",
+  "commitment.eyebrow": "پیش‌عنوان رویکرد تولید", "commitment.title": "عنوان رویکرد تولید", "commitment.description": "متن رویکرد تولید",
+  "values.eyebrow": "پیش‌عنوان ارزش‌ها", "values.title": "عنوان ارزش‌ها", "values.description": "توضیح ارزش‌ها",
+  "vision.eyebrow": "پیش‌عنوان چشم‌انداز", "vision.title": "عنوان چشم‌انداز", "vision.description": "متن چشم‌انداز", "vision.tagline": "شعار پایانی",
   "office.title": "عنوان دفتر", "office.email": "ایمیل", "office.phone": "تلفن", "office.address": "نشانی",
   "newsletter.title": "عنوان خبرنامه", "newsletter.description": "توضیحات خبرنامه",
   "credentials.title": "عنوان نمادها و مجوزها", "contact.title": "عنوان اطلاعات تماس", "contact.location": "موقعیت", "contact.phone": "تلفن", "contact.email": "ایمیل",
@@ -58,6 +63,7 @@ const fieldLabels: Record<string, string> = {
 };
 
 const specialKeys = new Set([
+  "about:hero.image_url",
   "contact:map.embed_url",
   "global-footer:credentials.mark1.label",
   "global-footer:credentials.mark1.image_url",
@@ -92,6 +98,7 @@ export default async function PageContent({ searchParams }: Props) {
     mark2Html: contentValue("global-footer", "credentials.mark2.html", "fa"),
   };
   const mapEmbed = contentValue("contact", "map.embed_url", "fa");
+  const aboutHeroImage = contentValue("about", "hero.image_url", "fa");
 
   const pages = new Map<string, Map<string, Row[]>>();
   for (const row of rows) {
@@ -112,7 +119,7 @@ export default async function PageContent({ searchParams }: Props) {
         <div><span><FileTextIcon /></span><div><small>مدیریت محتوای دوزبانه</small><h1>محتوای صفحات</h1><p>هر بخش را انتخاب کنید و نسخه فارسی و انگلیسی را کنار هم ویرایش کنید.</p></div></div>
       </header>
       {query.saved ? <p className="admin-alert success" role="status">تغییرات با موفقیت ذخیره شد.</p> : null}
-      {query.error ? <p className="admin-alert error" role="alert">ذخیره انجام نشد؛ فیلدهای ضروری یا کد Embed را بررسی کنید.</p> : null}
+      {query.error ? <p className="admin-alert error" role="alert">ذخیره انجام نشد؛ فیلدها، فایل یا کد Embed را بررسی کنید.</p> : null}
       <HomepageMediaAdmin />
       <div className="admin-content-workspace">
         <aside className="admin-content-nav" aria-label="فهرست صفحات">
@@ -124,6 +131,7 @@ export default async function PageContent({ searchParams }: Props) {
             <section id={`content-${namespace}`} className="admin-content-section" key={namespace}>
               <header><div><small dir="ltr">{namespace}</small><h2>{pageMeta[namespace]?.label ?? namespace}</h2><p>{pageMeta[namespace]?.description ?? "محتوای دوزبانه این بخش"}</p></div><span>{fields.size} فیلد</span></header>
               <div className="admin-content-fields">
+                {namespace === "about" ? <AboutHeroImageEditor value={aboutHeroImage} /> : null}
                 {[...fields].map(([key, values]) => <ContentField key={key} rows={values} />)}
                 {namespace === "contact" ? <ContactMapEditor value={mapEmbed} /> : null}
                 {namespace === "global-footer" ? <FooterTrustEditor values={footerTrustValues} /> : null}
@@ -134,6 +142,35 @@ export default async function PageContent({ searchParams }: Props) {
         </div>
       </div>
     </main>
+  );
+}
+
+function AboutHeroImageEditor({ value }: { value: string }) {
+  return (
+    <article className="admin-content-field" style={{ gridColumn: "1 / -1" }}>
+      <header>
+        <div><h3>تصویر هیروی صفحه درباره ما</h3><code dir="ltr">hero.image_url</code></div>
+        <small>تصویر عریض بالای صفحه درباره ما؛ پیشنهاد می‌شود حداقل 1600×700 پیکسل باشد.</small>
+      </header>
+      <form action={saveAboutHeroImage} className="admin-content-form">
+        {value ? (
+          <div style={{ overflow: "hidden", borderRadius: 14, border: "1px solid var(--admin-line, #dfe5ea)", background: "#f5f7f9" }}>
+            <img src={value} alt="" style={{ width: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} />
+          </div>
+        ) : null}
+        <AdminUploadField
+          name="hero_image_url"
+          label="آپلود یا جایگزینی تصویر هیرو"
+          folder="about"
+          accept="image/jpeg,image/png,image/webp,image/avif"
+          defaultValue={value}
+        />
+        <footer>
+          <small>پس از بارگذاری، روی «ذخیره تصویر هیرو» بزنید تا در نسخه فارسی و انگلیسی اعمال شود.</small>
+          <button type="submit">ذخیره تصویر هیرو</button>
+        </footer>
+      </form>
+    </article>
   );
 }
 

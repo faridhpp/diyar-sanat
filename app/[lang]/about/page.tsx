@@ -8,7 +8,7 @@ import styles from "./about.module.css";
 
 type Props = { params: Promise<{ lang: string }> };
 
-const ABOUT_HERO_IMAGE = "/images/about-factory.png";
+const ABOUT_HERO_FALLBACK = "/images/factory-teaser-cover.png";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { lang } = await params;
@@ -33,6 +33,7 @@ export default async function AboutPage({ params }: Props) {
   const managed = await getManagedTranslations(lang, "about");
   const t = (key: string, faFallback: string, enFallback: string) =>
     managed[key]?.trim() || (fa ? faFallback : enFallback);
+  const heroImage = managed["hero.image_url"]?.trim() || ABOUT_HERO_FALLBACK;
 
   const facts = [
     {
@@ -90,7 +91,7 @@ export default async function AboutPage({ params }: Props) {
     <main id="main-content" className={styles.page}>
       <section className={styles.hero} aria-labelledby="about-title">
         <Image
-          src={ABOUT_HERO_IMAGE}
+          src={heroImage}
           alt={t(
             "hero.image_alt",
             "نمای مجموعه صنعتی دیار صنعت تبریز",

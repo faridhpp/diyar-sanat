@@ -6,12 +6,12 @@ decision. Newest entries go first.
 ## 2026-09-15 — About page editorial redesign
 
 - Rebuilt `/[lang]/about` as an image-led company profile using a dedicated responsive CSS module, with a full-width industrial hero, overlapping company facts, long-form company story, four-stage production/quality flow, three company values, and a prominent vision/CTA panel.
-- Reserved the fixed public asset path `/images/about-factory.png` for the employer-supplied factory image. The binary image is intentionally not committed so the final approved asset can be uploaded separately without coupling page layout to an editor-managed image field.
+- Made the About hero image fully manageable from `/admin/translations`: staff can upload or replace the shared bilingual hero asset through the existing protected `site-media` upload flow, and the page reads the persisted `about / hero.image_url` value with the existing factory teaser used only as a safe pre-configuration fallback.
 - Connected every substantive About-page heading, paragraph, fact, process label, value, image alt text, vision statement, and closing tagline to the existing `site_translations` content system, while keeping bilingual Persian/English fallbacks in code.
 - Added data migration `drizzle/0003_about_page_content.sql` to seed/update the employer-approved bilingual About copy so all redesigned content appears immediately in `/admin/translations` after migration. No schema, grant, RLS, or authentication changes were required.
 - Connected About metadata to the existing managed SEO repository and preserved locale-prefixed canonical/hreflang output.
-- Affected: `app/[lang]/about/page.tsx`, `app/[lang]/about/about.module.css`, `drizzle/0003_about_page_content.sql`, and the Drizzle migration journal.
-- Verification: static TypeScript/JSX, RTL/LTR, migration, and responsive-layout review completed against branch `next`. Local pnpm lint/typecheck/build could not be executed in this session; the branch already had an unrelated Vercel deployment failure before this redesign.
+- Affected: `app/[lang]/about/page.tsx`, `app/[lang]/about/about.module.css`, `/admin/translations`, `content-settings-actions.ts`, `drizzle/0003_about_page_content.sql`, and the Drizzle migration journal.
+- Verification: static TypeScript/JSX, managed-upload data flow, RTL/LTR, migration, and responsive-layout review completed against branch `next`. Local pnpm lint/typecheck/build could not be executed in this session; the branch already had an unrelated Vercel deployment failure before this redesign.
 
 ## 2026-09-15 — Managed site identity, footer credentials, and contact map controls
 
