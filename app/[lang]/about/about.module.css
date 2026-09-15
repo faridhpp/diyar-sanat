@@ -1,0 +1,743 @@
+.page {
+  min-height: 100vh;
+  padding-bottom: 90px;
+  overflow: hidden;
+  background: #f5f8fb;
+}
+
+.hero {
+  position: relative;
+  min-height: 620px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #071c35;
+}
+
+.heroImage {
+  z-index: -3;
+  object-fit: cover;
+  object-position: center 54%;
+  transform: scale(1.01);
+}
+
+.heroShade {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(5 22 42 / 20%) 5%, rgb(5 22 42 / 10%) 36%, rgb(5 22 42 / 87%) 100%),
+    linear-gradient(90deg, rgb(5 22 42 / 38%) 0%, transparent 62%);
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-start: 0;
+  inset-block-end: 0;
+  width: min(560px, 48vw);
+  height: 5px;
+  background: #d12632;
+}
+
+.heroInner {
+  min-height: 620px;
+  padding-block: 28px 72px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(255 255 255 / 78%);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.breadcrumbs a {
+  transition: color 180ms ease;
+}
+
+.breadcrumbs a:hover,
+.breadcrumbs a:focus-visible {
+  color: white;
+}
+
+.heroCopy {
+  max-width: 820px;
+  color: white;
+  text-shadow: 0 3px 20px rgb(0 0 0 / 22%);
+}
+
+.eyebrow,
+.storyHeading > span,
+.commitmentCopy > span,
+.sectionHeading > span,
+.visionCopy > span {
+  display: inline-block;
+  color: #ff7780;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .02em;
+}
+
+.heroCopy h1 {
+  margin: 9px 0 10px;
+  color: white;
+  font-size: clamp(40px, 5.2vw, 72px);
+  line-height: 1.22;
+  letter-spacing: -.035em;
+}
+
+.heroCopy p {
+  max-width: 720px;
+  margin: 0;
+  color: rgb(255 255 255 / 88%);
+  font-size: clamp(13px, 1.25vw, 17px);
+  line-height: 2;
+  font-weight: 520;
+}
+
+.factRail {
+  position: relative;
+  z-index: 5;
+  margin-top: -38px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid rgb(10 34 64 / 9%);
+  border-radius: 20px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 20px 50px rgb(10 34 64 / 14%);
+  backdrop-filter: blur(14px);
+}
+
+.fact {
+  min-height: 108px;
+  padding: 23px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  border-inline-end: 1px solid #e4e8eb;
+}
+
+.fact:last-child {
+  border-inline-end: 0;
+}
+
+.fact small {
+  color: #718292;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.fact strong {
+  color: #0a2240;
+  font-size: clamp(16px, 1.5vw, 21px);
+  line-height: 1.55;
+}
+
+.story {
+  margin-top: 88px;
+  display: grid;
+  grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr);
+  gap: 78px;
+  align-items: start;
+}
+
+.storyHeading {
+  position: sticky;
+  top: 118px;
+}
+
+.storyHeading h2 {
+  max-width: 470px;
+  margin: 9px 0 0;
+  color: #0a2240;
+  font-size: clamp(28px, 3vw, 42px);
+  line-height: 1.55;
+  letter-spacing: -.02em;
+}
+
+.storyCopy {
+  display: grid;
+  gap: 23px;
+}
+
+.storyCopy p {
+  margin: 0;
+  color: #526777;
+  font-size: 14px;
+  line-height: 2.3;
+  text-align: start;
+}
+
+.storyCopy p:first-child::first-letter {
+  color: #d12632;
+  font-size: 1.45em;
+  font-weight: 900;
+}
+
+.commitment {
+  margin-top: 82px;
+  padding: 42px;
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: 48px;
+  align-items: center;
+  border: 1px solid #e1e8ed;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 16px 45px rgb(10 34 64 / 7%);
+}
+
+.commitmentCopy h2 {
+  margin: 8px 0 13px;
+  color: #0a2240;
+  font-size: clamp(25px, 2.5vw, 34px);
+  line-height: 1.55;
+}
+
+.commitmentCopy p {
+  margin: 0;
+  color: #5d7181;
+  font-size: 11.5px;
+  line-height: 2.15;
+}
+
+.processList {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+  counter-reset: none;
+}
+
+.processList li {
+  position: relative;
+  min-height: 112px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid #e2e8ed;
+  border-radius: 15px;
+  background: #f8fafc;
+}
+
+.processList li::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 18px;
+  width: 3px;
+  border-radius: 4px;
+  background: #d12632;
+}
+
+.processList span {
+  color: #d12632;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.processList strong {
+  max-width: 180px;
+  color: #183652;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.valuesSection {
+  margin-top: 92px;
+}
+
+.sectionHeading {
+  max-width: 700px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.sectionHeading h2 {
+  margin: 8px 0;
+  color: #0a2240;
+  font-size: clamp(27px, 3vw, 38px);
+  line-height: 1.55;
+}
+
+.sectionHeading p {
+  margin: 0;
+  color: #667988;
+  font-size: 11px;
+  line-height: 2;
+}
+
+.valueGrid {
+  margin-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.valueCard {
+  position: relative;
+  min-height: 250px;
+  padding: 29px;
+  overflow: hidden;
+  border: 1px solid #e1e8ed;
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 10px 30px rgb(10 34 64 / 5%);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.valueCard::after {
+  content: "";
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  inset-inline-end: -45px;
+  inset-block-start: -45px;
+  border: 1px solid rgb(40 119 189 / 12%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 22px rgb(40 119 189 / 3%);
+}
+
+.valueCard:hover {
+  transform: translateY(-5px);
+  border-color: #cfdce5;
+  box-shadow: 0 18px 40px rgb(10 34 64 / 9%);
+}
+
+.valueCard > span {
+  color: #d12632;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.valueCard h3 {
+  margin: 47px 0 9px;
+  color: #0a2240;
+  font-size: 21px;
+}
+
+.valueCard p {
+  margin: 0;
+  color: #607382;
+  font-size: 10.5px;
+  line-height: 2;
+}
+
+.vision {
+  position: relative;
+  margin-top: 92px;
+  padding: 54px 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 46px;
+  align-items: end;
+  overflow: hidden;
+  border-radius: 24px;
+  background: linear-gradient(125deg, #071c35, #164b82 78%);
+  color: white;
+  box-shadow: 0 22px 55px rgb(7 28 53 / 18%);
+}
+
+.vision::after {
+  content: "";
+  position: absolute;
+  width: 330px;
+  height: 330px;
+  inset-inline-end: -120px;
+  inset-block-start: -210px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 58px rgb(255 255 255 / 3%), 0 0 0 116px rgb(255 255 255 / 2%);
+}
+
+.visionCopy {
+  position: relative;
+  z-index: 1;
+  max-width: 800px;
+}
+
+.visionCopy > span {
+  color: #9fc2df;
+}
+
+.visionCopy h2 {
+  margin: 8px 0 12px;
+  color: white;
+  font-size: clamp(27px, 3vw, 40px);
+  line-height: 1.55;
+}
+
+.visionCopy p {
+  max-width: 760px;
+  margin: 0;
+  color: #c6d7e4;
+  font-size: 11px;
+  line-height: 2.05;
+}
+
+.tagline {
+  display: block;
+  margin-top: 24px;
+  padding-inline-start: 14px;
+  border-inline-start: 3px solid #d12632;
+  color: white;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.visionActions {
+  position: relative;
+  z-index: 1;
+  min-width: 185px;
+  display: grid;
+  gap: 10px;
+}
+
+.primaryAction,
+.secondaryAction {
+  min-height: 48px;
+  padding-inline: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 850;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.primaryAction {
+  background: #d12632;
+  color: white;
+  box-shadow: 0 10px 22px rgb(209 38 50 / 24%);
+}
+
+.secondaryAction {
+  border: 1px solid rgb(255 255 255 / 28%);
+  background: rgb(255 255 255 / 8%);
+  color: white;
+}
+
+.primaryAction:hover,
+.secondaryAction:hover,
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+  transform: translateY(-2px);
+}
+
+.secondaryAction:hover,
+.secondaryAction:focus-visible {
+  border-color: rgb(255 255 255 / 48%);
+  background: rgb(255 255 255 / 13%);
+}
+
+:global(:root[data-theme="dark"]) .page {
+  background: #07192e;
+}
+
+:global(:root[data-theme="dark"]) .factRail,
+:global(:root[data-theme="dark"]) .commitment,
+:global(:root[data-theme="dark"]) .valueCard {
+  border-color: #294965;
+  background: #0e2a49;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 20%);
+}
+
+:global(:root[data-theme="dark"]) .fact {
+  border-color: #294965;
+}
+
+:global(:root[data-theme="dark"]) .fact small,
+:global(:root[data-theme="dark"]) .storyCopy p,
+:global(:root[data-theme="dark"]) .commitmentCopy p,
+:global(:root[data-theme="dark"]) .sectionHeading p,
+:global(:root[data-theme="dark"]) .valueCard p {
+  color: #bfd0de;
+}
+
+:global(:root[data-theme="dark"]) .fact strong,
+:global(:root[data-theme="dark"]) .storyHeading h2,
+:global(:root[data-theme="dark"]) .commitmentCopy h2,
+:global(:root[data-theme="dark"]) .sectionHeading h2,
+:global(:root[data-theme="dark"]) .valueCard h3 {
+  color: #f2f8fd;
+}
+
+:global(:root[data-theme="dark"]) .processList li {
+  border-color: #35536d;
+  background: #0a223d;
+}
+
+:global(:root[data-theme="dark"]) .processList strong {
+  color: #e6f1fa;
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .heroInner {
+    min-height: 560px;
+  }
+
+  .heroInner {
+    padding-bottom: 64px;
+  }
+
+  .story {
+    margin-top: 68px;
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .storyHeading {
+    position: static;
+  }
+
+  .storyHeading h2 {
+    max-width: 720px;
+  }
+
+  .commitment {
+    margin-top: 64px;
+    grid-template-columns: 1fr;
+    gap: 30px;
+    padding: 34px;
+  }
+
+  .valuesSection,
+  .vision {
+    margin-top: 72px;
+  }
+
+  .vision {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .visionActions {
+    width: min(100%, 420px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding-bottom: 58px;
+  }
+
+  .hero,
+  .heroInner {
+    min-height: 500px;
+  }
+
+  .heroImage {
+    object-position: 56% center;
+  }
+
+  .heroShade {
+    background:
+      linear-gradient(180deg, rgb(5 22 42 / 15%) 2%, rgb(5 22 42 / 18%) 34%, rgb(5 22 42 / 91%) 100%),
+      linear-gradient(90deg, rgb(5 22 42 / 20%), transparent);
+  }
+
+  .heroInner {
+    padding-block: 22px 54px;
+  }
+
+  .heroCopy h1 {
+    font-size: clamp(34px, 10vw, 46px);
+  }
+
+  .heroCopy p {
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 2;
+  }
+
+  .factRail {
+    width: min(100% - 32px, 1280px);
+    margin-top: -30px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: 17px;
+  }
+
+  .fact {
+    min-height: 91px;
+    padding: 17px 15px;
+    border-block-end: 1px solid #e4e8eb;
+  }
+
+  .fact:nth-child(2) {
+    border-inline-end: 0;
+  }
+
+  .fact:last-child {
+    grid-column: 1 / -1;
+    min-height: 80px;
+    border-block-end: 0;
+  }
+
+  .fact strong {
+    font-size: 14px;
+  }
+
+  .story {
+    width: min(100% - 32px, 1280px);
+    margin-top: 58px;
+  }
+
+  .storyHeading h2,
+  .sectionHeading h2,
+  .visionCopy h2 {
+    font-size: 27px;
+  }
+
+  .storyCopy {
+    gap: 18px;
+  }
+
+  .storyCopy p {
+    font-size: 12px;
+    line-height: 2.2;
+  }
+
+  .commitment,
+  .valuesSection,
+  .vision {
+    width: min(100% - 32px, 1280px);
+  }
+
+  .commitment {
+    margin-top: 54px;
+    padding: 24px 18px;
+    border-radius: 18px;
+  }
+
+  .commitmentCopy h2 {
+    font-size: 25px;
+  }
+
+  .commitmentCopy p,
+  .sectionHeading p,
+  .visionCopy p {
+    font-size: 10.5px;
+  }
+
+  .processList {
+    gap: 9px;
+  }
+
+  .processList li {
+    min-height: 96px;
+    padding: 15px;
+  }
+
+  .processList strong {
+    font-size: 11px;
+  }
+
+  .valuesSection {
+    margin-top: 58px;
+  }
+
+  .valueGrid {
+    grid-template-columns: 1fr;
+    gap: 11px;
+  }
+
+  .valueCard {
+    min-height: 0;
+    padding: 22px;
+  }
+
+  .valueCard h3 {
+    margin-top: 22px;
+    font-size: 18px;
+  }
+
+  .vision {
+    margin-top: 58px;
+    padding: 32px 22px;
+    border-radius: 19px;
+  }
+
+  .tagline {
+    font-size: 12px;
+  }
+
+  .visionActions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero,
+  .heroInner {
+    min-height: 455px;
+  }
+
+  .heroImage {
+    object-position: 60% center;
+  }
+
+  .breadcrumbs {
+    font-size: 9px;
+  }
+
+  .factRail {
+    grid-template-columns: 1fr;
+  }
+
+  .fact,
+  .fact:nth-child(2),
+  .fact:last-child {
+    grid-column: auto;
+    min-height: 76px;
+    border-inline-end: 0;
+    border-block-end: 1px solid #e4e8eb;
+  }
+
+  .fact:last-child {
+    border-block-end: 0;
+  }
+
+  .processList {
+    grid-template-columns: 1fr;
+  }
+
+  .processList li {
+    min-height: 82px;
+  }
+
+  .visionActions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .valueCard,
+  .primaryAction,
+  .secondaryAction,
+  .breadcrumbs a {
+    transition: none;
+  }
+
+  .valueCard:hover,
+  .primaryAction:hover,
+  .secondaryAction:hover,
+  .primaryAction:focus-visible,
+  .secondaryAction:focus-visible {
+    transform: none;
+  }
+}

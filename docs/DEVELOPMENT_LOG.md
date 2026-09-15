@@ -3,6 +3,25 @@
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 
+## 2026-09-15 — About page editorial redesign
+
+- Rebuilt `/[lang]/about` as an image-led company profile using a dedicated responsive CSS module, with a full-width industrial hero, overlapping company facts, long-form company story, four-stage production/quality flow, three company values, and a prominent vision/CTA panel.
+- Reserved the fixed public asset path `/images/about-factory.png` for the employer-supplied factory image. The binary image is intentionally not committed so the final approved asset can be uploaded separately without coupling page layout to an editor-managed image field.
+- Connected every substantive About-page heading, paragraph, fact, process label, value, image alt text, vision statement, and closing tagline to the existing `site_translations` content system, while keeping bilingual Persian/English fallbacks in code.
+- Added data migration `drizzle/0003_about_page_content.sql` to seed/update the employer-approved bilingual About copy so all redesigned content appears immediately in `/admin/translations` after migration. No schema, grant, RLS, or authentication changes were required.
+- Connected About metadata to the existing managed SEO repository and preserved locale-prefixed canonical/hreflang output.
+- Affected: `app/[lang]/about/page.tsx`, `app/[lang]/about/about.module.css`, `drizzle/0003_about_page_content.sql`, and the Drizzle migration journal.
+- Verification: static TypeScript/JSX, RTL/LTR, migration, and responsive-layout review completed against branch `next`. Local pnpm lint/typecheck/build could not be executed in this session; the branch already had an unrelated Vercel deployment failure before this redesign.
+
+## 2026-09-15 — Managed site identity, footer credentials, and contact map controls
+
+- Separated the formal site title/metadata from the two-line header label, while retaining dedicated public-header, admin-panel, and login logo settings.
+- Added managed footer credential slots with image upload or sanitized link/image HTML suitable for trust badges such as eNamad; scripts and inline event handlers are not rendered.
+- Removed the fixed footer license-verification disclaimer and the contact-page general-Tabriz marker disclaimer.
+- Added managed Google Maps/OpenStreetMap embed support for the contact page, accepting a full embed iframe or direct approved HTTPS embed URL and storing only the normalized source URL.
+- Public content writes now invalidate the localized public pages/layout so these settings are visible without a redeploy.
+- Affected: site settings, public header/footer, contact page, translation workspace/actions, and `lib/content-embeds.ts`. No schema migration was required because the existing translation store is reused.
+
 ## 2026-09-15 — Managed public content synchronization
 
 - Unified the public media experience with the editorial database: article detail pages, related articles, and homepage journal cards now consume published `editorial_entries`/`editorial_translations` instead of static-only article records.
@@ -53,7 +72,7 @@ decision. Newest entries go first.
   schema definitions, inferred types, migration snapshots, pooled parameterized
   queries, transaction-local visitor/staff roles, and explicit grants/RLS.
   Owner credentials are confined to migration/import scripts. Original
-  Supabase migrations/configuration are archived in `docs/legacy-supabase/`.
+  Supabase migrations/configuration are archived under `docs/legacy-supabase/`.
 - Replaced Supabase Auth with bcrypt passwords, hashed opaque eight-hour
   sessions, secure HttpOnly cookies, logout revocation, current profile checks,
   transactional staff creation, manager-only settings updates, origin checks,
@@ -320,8 +339,9 @@ decision. Newest entries go first.
 ## 2026-08-06 — Removed brand-card numbering
 
 - Removed the decorative 01/02/03 labels from homepage brand cards for a cleaner visual hierarchy.
-- Affected: `app/[lang]/page.tsx`. No database migration.
-- Verification: `bun run typecheck` and `bun run lint`.
+- Affected: `/fa` and `/en`. No database migration.
+- Verification: `bun run lint`, `bun run typecheck`, and
+  `bun run build -- --webpack` completed successfully.
 
 ## 2026-08-06 — Homepage brand-card UX refinement
 
@@ -659,7 +679,7 @@ decision. Newest entries go first.
 - Changed the Persian section label from “دیار شیمی” to “محصولات ما” and added a red emphasis underline beneath “عملکرد بهتر” in the main heading; added equivalent English copy.
 - Kept generated packaging free from unverified specifications, certificates, statistics, and performance claims.
 - Affected routes: `/fa` and `/en`. No database migration was required.
-- Verification: `bun run lint`, `bun run typecheck`, and `bun run build -- --webpack` pass. The four final web assets were resized to 900×900 JPEGs for delivery efficiency.
+- Verification: `bun run typecheck`, `bun run lint`, and production build. The four final web assets were resized to 900×900 JPEGs for delivery efficiency.
 
 ## 2026-08-06 — Desktop hero set to 600px
 
