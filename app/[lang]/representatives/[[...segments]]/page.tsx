@@ -5,7 +5,8 @@ import { ChevronIcon, HomeIcon, MapPinIcon, ShieldIcon } from "@/components/icon
 import { RepresentativeMap } from "@/components/representative-map";
 import { RepresentativeSelectors } from "@/components/representative-selectors";
 import { getDictionary, isLocale } from "@/lib/i18n";
-import { findRegion, isCountry, regionName, regions, representatives, type CountryCode } from "@/lib/representatives";
+import { getPublishedRepresentatives } from "@/lib/representative-content";
+import { findRegion, isCountry, regionName, regions, type CountryCode } from "@/lib/representatives";
 
 type Props = { params: Promise<{ lang: string; segments?: string[] }> };
 
@@ -35,7 +36,8 @@ export default async function RepresentativesPage({ params }: Props) {
   if (!resolved) notFound();
   const dict = getDictionary(lang);
   const { country, region } = resolved;
-  const matching = representatives.filter((item) => item.country === country && (!region || item.region === region.slug));
+  const publishedRepresentatives = await getPublishedRepresentatives();
+  const matching = publishedRepresentatives.filter((item) => item.country === country && (!region || item.region === region.slug));
   const countryLabel = country === "iran" ? (lang === "fa" ? "ایران" : "Iran") : (lang === "fa" ? "عراق" : "Iraq");
   const selectedLabel = region ? regionName(region, lang) : countryLabel;
   const byCity = matching.reduce((groups, item) => {
@@ -57,7 +59,18 @@ export default async function RepresentativesPage({ params }: Props) {
       <div className="representatives-workspace">
         <RepresentativeMap locale={lang} country={country} regions={regions[country]} active={region?.slug} />
         <section className="representative-results" aria-live="polite"><header><span><MapPinIcon className="size-5" /></span><div><small>{lang === "fa" ? "محدوده انتخاب‌شده" : "Selected area"}</small><h2>{selectedLabel}</h2></div></header>
-          {matching.length ? Array.from(byCity, ([city, items]) => <section className="city-group" key={city}><h3>{city}</h3>{items.map((item) => <article className="representative-card" key={item.id}><h4>{lang === "fa" ? item.businessFa : item.businessEn}</h4></article>)}</section>) : <div className="representatives-empty"><span><ShieldIcon className="size-8" /></span><h3>{lang === "fa" ? "نماینده تأییدشده‌ای ثبت نشده است" : "No approved representative is listed yet"}</h3><p>{lang === "fa" ? "اطلاعات تماس فقط پس از تأیید رسمی مجموعه در این صفحه منتشر می‌شود. استان دیگری را انتخاب کنید یا برای پیگیری با دفتر مرکزی تماس بگیرید." : "Contact details are published only after company approval. Choose another region or contact the head office."}</p><Link className="button button-secondary" href={`/${lang}#contact`}>{dict.actions.contact}</Link></div>}
+          {matching.length ? Array.from(byCity, ([city, items]) => <section className="city-group" key={city}><h3>{city}</h3>{items.map((item) => {
+            const business = lang === "fa" ? item.businessFa : item.businessEn;
+            const manager = lang === "fa" ? item.managerFa : item.managerEn;
+            const address = lang === "fa" ? item.addressFa : item.addressEn;
+            const whatsappHref = item.whatsapp ? `https://wa.me/${item.whatsapp.replace(/\D/g, "")}` : undefined;
+            return <article className="representative-card" key={item.id}>
+              <h4>{business}</h4>
+              <p>{lang === "fa" ? "مسئول نمایندگی" : "Representative manager"}: <strong>{manager}</strong></p>
+              <address>{address}</address>
+              <p><a href={`tel:${item.phone}`} dir="ltr">{item.phone}</a>{whatsappHref ? <> · <a href={whatsappHref} target="_blank" rel="noreferrer">{lang === "fa" ? "واتساپ" : "WhatsApp"}</a></> : null}{item.directions ? <> · <a href={item.directions} target="_blank" rel="noreferrer">{lang === "fa" ? "مسیریابی" : "Directions"}</a></> : null}</p>
+            </article>;
+          })}</section>) : <div className="representatives-empty"><span><ShieldIcon className="size-8" /></span><h3>{lang === "fa" ? "نماینده تأییدشده‌ای ثبت نشده است" : "No approved representative is listed yet"}</h3><p>{lang === "fa" ? "اطلاعات تماس فقط پس از تأیید رسمی مجموعه در این صفحه منتشر می‌شود. استان دیگری را انتخاب کنید یا برای پیگیری با دفتر مرکزی تماس بگیرید." : "Contact details are published only after company approval. Choose another region or contact the head office."}</p><Link className="button button-secondary" href={`/${lang}#contact`}>{dict.actions.contact}</Link></div>}
         </section>
       </div>
       <section className="representative-join-banner" aria-labelledby="representative-join-title">

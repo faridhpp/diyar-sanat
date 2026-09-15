@@ -1,5 +1,99 @@
 "use server";
-import {revalidatePath} from "next/cache";import {redirect} from "next/navigation";import {requireStaff} from "@/lib/admin/auth";import {createClient} from "@/lib/db/server";
-const val=(d:FormData,k:string,n=600)=>String(d.get(k)??"").trim().slice(0,n),slug=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,phone=/^\+?[0-9]{10,15}$/;const fail=(m:string):never=>redirect(`/admin/representatives?error=${encodeURIComponent(m)}`);
-export async function saveRepresentative(data:FormData){const{profile}=await requireStaff();if(profile.role==="seo")fail("دسترسی کافی ندارید");const id=Number(val(data,"id",20))||null,city_id=Number(val(data,"city_id",20)),path=val(data,"slug",100).toLowerCase(),phoneValue=val(data,"phone",16),whatsapp=val(data,"whatsapp",16),lat=val(data,"latitude",20),lng=val(data,"longitude",20),directions=val(data,"directions_url",500);if(!city_id||!slug.test(path))fail("شهر و نشانی معتبر الزامی است");if(!phone.test(phoneValue)||whatsapp&&!phone.test(whatsapp))fail("شماره تماس معتبر نیست");if(directions&&!directions.startsWith("https://"))fail("مسیریابی باید نشانی HTTPS باشد");const required=["business_name_fa","manager_name_fa","address_fa"] as const;if(required.some(k=>!val(data,k)))fail("نام مجموعه، مسئول و آدرس فارسی الزامی است");const payload={city_id,slug:path,business_name_fa:val(data,"business_name_fa"),business_name_en:val(data,"business_name_en")||null,manager_name_fa:val(data,"manager_name_fa"),manager_name_en:val(data,"manager_name_en")||null,address_fa:val(data,"address_fa"),address_en:val(data,"address_en")||null,phone:phoneValue,whatsapp:whatsapp||null,latitude:lat?Number(lat):null,longitude:lng?Number(lng):null,directions_url:directions||null,position:Math.max(0,Number(val(data,"position",6))||0),is_published:data.get("is_published")==="on"};const db=await createClient();const{data:city}=await db.from("cities").select("id").eq("id",city_id).maybeSingle();if(!city)fail("شهر انتخاب‌شده معتبر نیست");const{error}=id?await db.from("representatives").update(payload).eq("id",id):await db.from("representatives").insert(payload);if(error)fail("ذخیره نماینده انجام نشد؛ نشانی باید یکتا باشد");revalidatePath("/admin/representatives");revalidatePath("/fa/representatives");revalidatePath("/en/representatives");redirect("/admin/representatives?saved=1")}
-export async function deleteRepresentative(data:FormData){const{profile}=await requireStaff();if(profile.role==="seo")fail("دسترسی کافی ندارید");const id=Number(val(data,"id",20));if(!id)fail("شناسه معتبر نیست");const{error}=await(await createClient()).from("representatives").delete().eq("id",id);if(error)fail("حذف نماینده انجام نشد");revalidatePath("/admin/representatives");redirect("/admin/representatives?deleted=1")}
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { requireStaff } from "@/lib/admin/auth";
+import { createClient } from "@/lib/db/server";
+
+const val = (data: FormData, key: string, max = 600) => String(data.get(key) ?? "").trim().slice(0, max);
+const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const phone = /^\+?[0-9]{10,15}$/;
+const fail = (message: string): never => redirect(`/admin/representatives?error=${encodeURIComponent(message)}`);
+
+function revalidateRepresentativePages() {
+  revalidatePath("/admin/representatives");
+  revalidatePath("/fa/representatives", "layout");
+  revalidatePath("/en/representatives", "layout");
+}
+
+export async function saveRepresentative(data: FormData) {
+  const { profile } = await requireStaff();
+  if (profile.role === "seo") fail("دسترسی کافی ندارید");
+
+  const id = Number(val(data, "id", 20)) || null;
+  const cityId = Number(val(data, "city_id", 20));
+  const path = val(data, "slug", 100).toLowerCase();
+  const phoneValue = val(data, "phone", 16);
+  const whatsapp = val(data, "whatsapp", 16);
+  const latitude = val(data, "latitude", 20);
+  const longitude = val(data, "longitude", 20);
+  const directions = val(data, "directions_url", 500);
+  const published = data.get("is_published") === "on";
+
+  if (!cityId || !slug.test(path)) fail("شهر و نشانی معتبر الزامی است");
+  if (!phone.test(phoneValue) || (whatsapp && !phone.test(whatsapp))) fail("شماره تماس معتبر نیست");
+  if (directions && !directions.startsWith("https://")) fail("مسیریابی باید نشانی HTTPS باشد");
+
+  const required = ["business_name_fa", "manager_name_fa", "address_fa"] as const;
+  if (required.some((key) => !val(data, key))) fail("نام مجموعه، مسئول و آدرس فارسی الزامی است");
+
+  const payload = {
+    city_id: cityId,
+    slug: path,
+    business_name_fa: val(data, "business_name_fa"),
+    business_name_en: val(data, "business_name_en") || null,
+    manager_name_fa: val(data, "manager_name_fa"),
+    manager_name_en: val(data, "manager_name_en") || null,
+    address_fa: val(data, "address_fa"),
+    address_en: val(data, "address_en") || null,
+    phone: phoneValue,
+    whatsapp: whatsapp || null,
+    latitude: latitude ? Number(latitude) : null,
+    longitude: longitude ? Number(longitude) : null,
+    directions_url: directions || null,
+    position: Math.max(0, Number(val(data, "position", 6)) || 0),
+    is_published: published,
+  };
+
+  const db = await createClient();
+  const { data: city } = await db
+    .from("cities")
+    .select("id,province_id,is_published")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (!city) fail("شهر انتخاب‌شده معتبر نیست");
+
+  if (published) {
+    const { data: province } = await db
+      .from("provinces")
+      .select("id,country_id,is_published")
+      .eq("id", city.province_id)
+      .maybeSingle();
+    const { data: country } = province
+      ? await db.from("countries").select("id,is_published").eq("id", province.country_id).maybeSingle()
+      : { data: null };
+
+    if (!city.is_published || !province?.is_published || !country?.is_published) {
+      fail("برای انتشار نماینده، کشور، استان و شهر انتخاب‌شده باید در بخش موقعیت‌ها فعال باشند");
+    }
+  }
+
+  const { error } = id
+    ? await db.from("representatives").update(payload).eq("id", id)
+    : await db.from("representatives").insert(payload);
+  if (error) fail("ذخیره نماینده انجام نشد؛ نشانی باید یکتا باشد");
+
+  revalidateRepresentativePages();
+  redirect("/admin/representatives?saved=1");
+}
+
+export async function deleteRepresentative(data: FormData) {
+  const { profile } = await requireStaff();
+  if (profile.role === "seo") fail("دسترسی کافی ندارید");
+  const id = Number(val(data, "id", 20));
+  if (!id) fail("شناسه معتبر نیست");
+  const { error } = await (await createClient()).from("representatives").delete().eq("id", id);
+  if (error) fail("حذف نماینده انجام نشد");
+  revalidateRepresentativePages();
+  redirect("/admin/representatives?deleted=1");
+}
