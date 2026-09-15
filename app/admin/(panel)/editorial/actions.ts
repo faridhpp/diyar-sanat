@@ -85,8 +85,9 @@ export async function saveEditorial(data: FormData) {
       .insert({ ...base, created_by: user.id })
       .select("id")
       .single();
-    if (error || !row) fail("ثبت محتوا انجام نشد");
-    entryId = row.id;
+    const createdId = row?.id;
+    if (error || !createdId) fail("ثبت محتوا انجام نشد");
+    entryId = createdId;
     created = true;
   }
 
