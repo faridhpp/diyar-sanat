@@ -7,11 +7,22 @@ type Props = {
   compact?: boolean;
   logoUrl?: string | null;
   title?: string | null;
+  primaryText?: string | null;
+  secondaryText?: string | null;
 };
 
-export function BrandMark({ locale, compact = false, logoUrl, title }: Props) {
+export function BrandMark({
+  locale,
+  compact = false,
+  logoUrl,
+  title,
+  primaryText,
+  secondaryText,
+}: Props) {
   const fallbackTitle = locale === "fa" ? "دیار صنعت تبریز" : "Diyar Sanat Tabriz";
   const brandTitle = title?.trim() || fallbackTitle;
+  const mainLabel = primaryText?.trim() || brandTitle;
+  const secondLabel = secondaryText?.trim() || "";
   const uploadedLogoStyle: CSSProperties | undefined = logoUrl
     ? { background: "transparent", border: 0, borderRadius: 0, boxShadow: "none" }
     : undefined;
@@ -31,7 +42,8 @@ export function BrandMark({ locale, compact = false, logoUrl, title }: Props) {
       </span>
       {!compact ? (
         <span className="brand-copy">
-          <strong>{brandTitle}</strong>
+          <strong>{mainLabel}</strong>
+          {secondLabel ? <small dir="ltr">{secondLabel}</small> : null}
         </span>
       ) : null}
     </Link>

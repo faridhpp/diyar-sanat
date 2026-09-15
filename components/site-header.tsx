@@ -14,20 +14,33 @@ import { createClient } from "@/lib/db/server";
 export async function SiteHeader({ locale }: { locale: Locale }) {
   const dict = getDictionary(locale);
   const db = await createClient();
-  const [nav, { data: settings }] = await Promise.all([
+  const [nav, { data: settings }, { data: headerLabels }] = await Promise.all([
     getHeaderNavigation(locale),
     db
       .from("site_settings")
       .select("site_title_fa,site_title_en,header_logo_url")
       .eq("id", true)
       .maybeSingle(),
+    db
+      .from("site_translations")
+      .select("locale,value")
+      .eq("namespace", "global-header")
+      .eq("translation_key", "brand.label"),
   ]);
   const title = locale === "fa" ? settings?.site_title_fa : settings?.site_title_en;
+  const headerFa = headerLabels?.find((item) => item.locale === "fa")?.value?.trim() || "دیار صنعت";
+  const headerEn = headerLabels?.find((item) => item.locale === "en")?.value?.trim() || "Diyar Sanat";
 
   return (
     <header className="site-header">
       <div className="container-wide header-main">
-        <BrandMark locale={locale} logoUrl={settings?.header_logo_url} title={title} />
+        <BrandMark
+          locale={locale}
+          logoUrl={settings?.header_logo_url}
+          title={title}
+          primaryText={headerFa}
+          secondaryText={headerEn}
+        />
         <Suspense fallback={<nav className="desktop-nav" aria-hidden="true" />}>
           <HeaderNavigation
             items={nav}
