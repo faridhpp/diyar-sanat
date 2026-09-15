@@ -88,8 +88,10 @@ export async function saveEditorial(data: FormData) {
       .select("id")
       .single();
 
-    const createdId = row?.id;
-    if (error || typeof createdId !== "number") fail("ثبت محتوا انجام نشد");
+    const createdId = Number(row?.id);
+    if (error || !Number.isInteger(createdId) || createdId <= 0) {
+      fail("ثبت محتوا انجام نشد");
+    }
 
     resolvedEntryId = createdId;
     created = true;
