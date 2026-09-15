@@ -74,25 +74,26 @@ export async function saveEditorial(data: FormData) {
   };
 
   const db = await createClient();
-  let entryId: number | null = id;
   let created = false;
-  if (entryId) {
-    const { error } = await db.from("editorial_entries").update(base).eq("id", entryId);
+  let resolvedEntryId: number;
+
+  if (id !== null) {
+    const { error } = await db.from("editorial_entries").update(base).eq("id", id);
     if (error) fail("ویرایش محتوا انجام نشد");
+    resolvedEntryId = id;
   } else {
     const { data: row, error } = await db
       .from("editorial_entries")
       .insert({ ...base, created_by: user.id })
       .select("id")
       .single();
-    const createdId: number | null = row?.id ?? null;
-    if (error || createdId === null) fail("ثبت محتوا انجام نشد");
-    entryId = createdId;
+
+    const createdId = row?.id;
+    if (error || typeof createdId !== "number") fail("ثبت محتوا انجام نشد");
+
+    resolvedEntryId = createdId;
     created = true;
   }
-
-  if (entryId === null) fail("شناسه محتوا پس از ذخیره معتبر نیست");
-  const resolvedEntryId: number = entryId;
 
   const rows = (["fa", "en"] as const).map((locale) => ({
     entry_id: resolvedEntryId,
