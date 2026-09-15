@@ -1,0 +1,115 @@
+.section .link {
+  color: #164b82;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-color: rgb(22 75 130 / 30%);
+  text-underline-offset: 4px;
+}
+
+.section .link:hover,
+.section .link:focus-visible {
+  color: #d12632;
+  text-decoration-color: currentColor;
+}
+
+.h3 {
+  margin: 30px 0 10px;
+  color: #0a2240;
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: 1.65;
+}
+
+.quote {
+  margin: 26px 0;
+  padding: 18px 22px;
+  border-inline-start: 4px solid #d12632;
+  border-radius: 10px;
+  background: #f5f8fb;
+  color: #40505f;
+  font-size: 13px;
+  line-height: 2.1;
+}
+
+.code {
+  padding: 2px 7px;
+  border: 1px solid #dce5ec;
+  border-radius: 6px;
+  background: #f4f7fa;
+  direction: ltr;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .9em;
+}
+
+.rule {
+  height: 1px;
+  margin: 36px 0;
+  border: 0;
+  background: #e4e8eb;
+}
+
+.figure {
+  margin: 32px 0;
+  overflow: hidden;
+  border: 1px solid #e0e7ec;
+  border-radius: 16px;
+  background: #f7f9fa;
+}
+
+.figure img {
+  width: 100%;
+  max-height: 680px;
+  display: block;
+  object-fit: cover;
+}
+
+.figure figcaption {
+  padding: 10px 14px 12px;
+  color: #6a7c8a;
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+:global(:root[data-theme="dark"]) .section .link {
+  color: #9bc7ec;
+}
+
+:global(:root[data-theme="dark"]) .section .link:hover,
+:global(:root[data-theme="dark"]) .section .link:focus-visible {
+  color: #ff8e95;
+}
+
+:global(:root[data-theme="dark"]) .h3 {
+  color: #f2f8fd;
+}
+
+:global(:root[data-theme="dark"]) .quote,
+:global(:root[data-theme="dark"]) .code,
+:global(:root[data-theme="dark"]) .figure {
+  border-color: #294965;
+  background: #0d2745;
+  color: #d2e0ea;
+}
+
+:global(:root[data-theme="dark"]) .rule {
+  background: #294965;
+}
+
+:global(:root[data-theme="dark"]) .figure figcaption {
+  color: #b8c8d6;
+}
+
+@media (max-width: 800px) {
+  .quote {
+    padding: 15px 16px;
+    font-size: 12px;
+  }
+
+  .figure {
+    margin: 24px 0;
+    border-radius: 12px;
+  }
+
+  .figure img {
+    max-height: 430px;
+  }
+}

@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArticleMarkdown } from "@/components/article-markdown";
 import { ChevronIcon, HomeIcon } from "@/components/icons";
 import { isLocale } from "@/lib/i18n";
+import { headingId } from "@/lib/markdown";
 import { getMediaArticlesFromDatabase, mediaKindLabel } from "@/lib/media-content";
 
 type Props = { params: Promise<{ lang: string; slug: string }> };
@@ -82,6 +84,7 @@ export default async function MediaArticlePage({ params }: Props) {
           <span>{article.title}</span>
         </div>
       </nav>
+
       <article>
         <header className="article-hero">
           <div className="container-wide">
@@ -101,35 +104,32 @@ export default async function MediaArticlePage({ params }: Props) {
             </div>
           </div>
         </header>
+
         <div className="container-wide article-cover">
           <Image src={article.image} alt={article.title} fill priority sizes="(max-width:800px) 100vw, 1100px" />
         </div>
+
         <div className="container-wide article-layout">
           <aside className="article-aside">
             <strong>{fa ? "در این مطلب" : "In this article"}</strong>
-            {article.sections
-              .filter((section) => section.heading)
-              .map((section) => (
-                <a key={section.heading} href={`#${section.heading?.replaceAll(" ", "-")}`}>
-                  {section.heading}
-                </a>
-              ))}
+            {article.sections.map((section, index) => section.heading ? (
+              <a key={`${section.heading}-${index}`} href={`#${headingId(section.heading, index)}`}>
+                {section.heading}
+              </a>
+            ) : null)}
             <Link href={`/${lang}/contact`}>{fa ? "پرسش از واحد فنی" : "Ask the technical team"}</Link>
           </aside>
+
           <div className="article-body">
-            {article.sections.map((section, index) => (
-              <section id={section.heading?.replaceAll(" ", "-")} key={`${section.heading}-${index}`}>
-                {section.heading ? <h2>{section.heading}</h2> : null}
-                {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-                {section.points ? <ul>{section.points.map((point) => <li key={point}>{point}</li>)}</ul> : null}
-              </section>
-            ))}
+            <ArticleMarkdown sections={article.sections} />
+
             {article.videoUrl ? (
               <section className="article-video">
                 <h2>{fa ? "ویدیوی مرتبط" : "Related video"}</h2>
                 <video controls preload="metadata" poster={article.image}><source src={article.videoUrl} /></video>
               </section>
             ) : null}
+
             <aside className="article-cta">
               <span>{fa ? "نیاز به راهنمایی محصول دارید؟" : "Need product guidance?"}</span>
               <h2>{fa ? "پیش از انتخاب، با واحد تخصصی گفت‌وگو کنید" : "Talk to our specialist team before choosing"}</h2>
@@ -139,6 +139,7 @@ export default async function MediaArticlePage({ params }: Props) {
           </div>
         </div>
       </article>
+
       <section className="container-wide article-related">
         <header><span>{fa ? "ادامه مطالعه" : "Continue reading"}</span><h2>{fa ? "مطالب مرتبط" : "Related articles"}</h2></header>
         <div>

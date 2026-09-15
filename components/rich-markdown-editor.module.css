@@ -1,0 +1,253 @@
+.editor {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border: 1px solid #dce4ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.topbar {
+  min-height: 45px;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5eaee;
+  background: #f7f9fa;
+}
+
+.topbar small {
+  color: #647887;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.modeSwitch {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #dce4ea;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.modeSwitch button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #506574;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.modeSwitch .active {
+  background: #0a2240;
+  color: #fff;
+}
+
+.toolbar {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e5eaee;
+  background: #fff;
+}
+
+.toolbar button {
+  min-width: 38px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #dbe4ea;
+  border-radius: 8px;
+  background: #f9fbfc;
+  color: #17344f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  transition: border-color .18s ease, background .18s ease, color .18s ease;
+}
+
+.toolbar button:hover,
+.toolbar button:focus-visible {
+  border-color: #9eb4c6;
+  background: #eef4f8;
+  color: #0a2240;
+}
+
+.toolbar button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 430px;
+  padding: 22px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: #fff;
+  color: #182d40;
+  font: inherit;
+  font-size: 13px;
+  line-height: 2.05;
+  tab-size: 2;
+}
+
+.previewContent {
+  min-height: 430px;
+  padding: 26px 30px;
+  background: #fff;
+  color: #40505f;
+  font-size: 13px;
+  line-height: 2.05;
+}
+
+.previewContent h2,
+.previewContent h3 {
+  color: #0a2240;
+  line-height: 1.55;
+}
+
+.previewContent h2 {
+  margin: 25px 0 10px;
+  font-size: 24px;
+}
+
+.previewContent h3 {
+  margin: 20px 0 8px;
+  font-size: 18px;
+}
+
+.previewContent p,
+.previewContent ul,
+.previewContent ol,
+.previewContent blockquote {
+  margin: 0 0 15px;
+}
+
+.previewContent ul,
+.previewContent ol {
+  padding-inline-start: 24px;
+}
+
+.previewContent a {
+  color: #164b82;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.previewContent blockquote {
+  padding: 13px 17px;
+  border-inline-start: 4px solid #d12632;
+  border-radius: 8px;
+  background: #f5f8fb;
+}
+
+.previewContent code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #edf2f6;
+  direction: ltr;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.previewContent figure {
+  margin: 22px 0;
+  overflow: hidden;
+  border: 1px solid #dce4ea;
+  border-radius: 12px;
+  background: #f7f9fa;
+}
+
+.previewContent figure img {
+  width: 100%;
+  max-height: 520px;
+  display: block;
+  object-fit: cover;
+}
+
+.previewContent figcaption {
+  padding: 8px 12px;
+  color: #6c7e8c;
+  font-size: 10px;
+}
+
+.previewContent hr {
+  height: 1px;
+  margin: 26px 0;
+  border: 0;
+  background: #e4e8eb;
+}
+
+.previewEmpty {
+  min-height: 430px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: #84929d;
+}
+
+.error,
+.help {
+  margin: 0;
+  padding: 9px 14px;
+  border-top: 1px solid #e5eaee;
+  font-size: 9px;
+  line-height: 1.8;
+}
+
+.error {
+  background: #fff3f3;
+  color: #af2530;
+  font-weight: 750;
+}
+
+.help {
+  background: #f7f9fa;
+  color: #637583;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column-reverse;
+  }
+
+  .toolbar {
+    gap: 5px;
+  }
+
+  .toolbar button {
+    min-height: 40px;
+  }
+
+  .textarea,
+  .previewContent,
+  .previewEmpty {
+    min-height: 360px;
+  }
+
+  .textarea,
+  .previewContent {
+    padding: 16px;
+  }
+}
