@@ -56,24 +56,39 @@ export async function saveRepresentative(data: FormData) {
   };
 
   const db = await createClient();
-  const { data: city } = await db
+  const { data: cityRecord, error: cityError } = await db
     .from("cities")
     .select("id,province_id,is_published")
     .eq("id", cityId)
     .maybeSingle();
-  if (!city) fail("شهر انتخاب‌شده معتبر نیست");
+
+  const cityProvinceId = Number(cityRecord?.province_id);
+  const cityIsPublished = cityRecord?.is_published === true;
+  if (cityError || !Number.isInteger(cityProvinceId) || cityProvinceId <= 0) {
+    fail("شهر انتخاب‌شده معتبر نیست");
+  }
 
   if (published) {
-    const { data: province } = await db
+    const { data: provinceRecord, error: provinceError } = await db
       .from("provinces")
       .select("id,country_id,is_published")
-      .eq("id", city.province_id)
+      .eq("id", cityProvinceId)
       .maybeSingle();
-    const { data: country } = province
-      ? await db.from("countries").select("id,is_published").eq("id", province.country_id).maybeSingle()
-      : { data: null };
 
-    if (!city.is_published || !province?.is_published || !country?.is_published) {
+    const provinceCountryId = Number(provinceRecord?.country_id);
+    const provinceIsPublished = provinceRecord?.is_published === true;
+    if (provinceError || !Number.isInteger(provinceCountryId) || provinceCountryId <= 0) {
+      fail("استان شهر انتخاب‌شده معتبر نیست");
+    }
+
+    const { data: countryRecord, error: countryError } = await db
+      .from("countries")
+      .select("id,is_published")
+      .eq("id", provinceCountryId)
+      .maybeSingle();
+    const countryIsPublished = countryRecord?.is_published === true;
+
+    if (countryError || !cityIsPublished || !provinceIsPublished || !countryIsPublished) {
       fail("برای انتشار نماینده، کشور، استان و شهر انتخاب‌شده باید در بخش موقعیت‌ها فعال باشند");
     }
   }
