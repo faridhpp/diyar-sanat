@@ -91,8 +91,11 @@ export async function saveEditorial(data: FormData) {
     created = true;
   }
 
+  if (entryId === null) fail("شناسه محتوا پس از ذخیره معتبر نیست");
+  const resolvedEntryId: number = entryId;
+
   const rows = (["fa", "en"] as const).map((locale) => ({
-    entry_id: entryId,
+    entry_id: resolvedEntryId,
     locale,
     title: locale === "fa" ? faTitle : enTitle,
     slug: locale === "fa" ? faSlug : enSlug,
@@ -107,7 +110,7 @@ export async function saveEditorial(data: FormData) {
     .from("editorial_translations")
     .upsert(rows, { onConflict: "entry_id,locale" });
   if (error) {
-    if (created) await db.from("editorial_entries").delete().eq("id", entryId);
+    if (created) await db.from("editorial_entries").delete().eq("id", resolvedEntryId);
     fail("ترجمه محتوا ذخیره نشد");
   }
 
