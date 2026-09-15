@@ -7,7 +7,14 @@ import { ChevronIcon, MenuIcon } from "@/components/icons";
 import { brands } from "@/lib/brands";
 import type { Locale } from "@/lib/i18n";
 
-export function MobileMenu({ locale, items }: { locale: Locale; items: readonly (readonly [string, string])[] }) {
+type Props = {
+  locale: Locale;
+  items: readonly (readonly [string, string])[];
+  logoUrl?: string | null;
+  brandTitle?: string | null;
+};
+
+export function MobileMenu({ locale, items, logoUrl, brandTitle }: Props) {
   const [open, setOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   const fa = locale === "fa";
@@ -26,7 +33,7 @@ export function MobileMenu({ locale, items }: { locale: Locale; items: readonly 
     <button type="button" className="icon-button mobile-menu-trigger" aria-label={fa ? "باز کردن منو" : "Open menu"} aria-expanded={open} onClick={() => setOpen(true)}><MenuIcon className="size-6" /></button>
     {open ? <div className="mobile-menu-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMenu(); }}>
       <div className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label={fa ? "منوی اصلی" : "Main menu"} dir={fa ? "rtl" : "ltr"}>
-        <header><BrandMark locale={locale} compact /><button type="button" className="mobile-menu-close" onClick={closeMenu} aria-label={fa ? "بستن منو" : "Close menu"}>×</button></header>
+        <header><BrandMark locale={locale} compact logoUrl={logoUrl} title={brandTitle}/><button type="button" className="mobile-menu-close" onClick={closeMenu} aria-label={fa ? "بستن منو" : "Close menu"}>×</button></header>
         <nav aria-label={fa ? "منوی موبایل" : "Mobile menu"}>
           {items.map(([label, href], index) => index === 2 ? <section className={`mobile-products-menu ${productsOpen ? "open" : ""}`} key={href}>
             <button type="button" aria-expanded={productsOpen} aria-controls="mobile-products-panel" onClick={() => setProductsOpen((value) => !value)}><span>{label}</span><ChevronIcon className="size-4" /></button>

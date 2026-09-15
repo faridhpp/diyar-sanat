@@ -10,9 +10,10 @@ import {
   UserIcon,
 } from "@/components/icons";
 import { IranMapMark } from "@/components/iran-map-mark";
-import { getCatalog } from "@/lib/catalog";
+import { featuredProducts, getCatalog, productFallbackImage } from "@/lib/catalog";
 import { brands } from "@/lib/brands";
 import { getDictionary, isLocale } from "@/lib/i18n";
+import { getMediaArticlesFromDatabase, mediaKindLabel } from "@/lib/media-content";
 import { notFound } from "next/navigation";
 import { getManagedTranslations } from "@/lib/site-content";
 import { createClient } from "@/lib/db/server";
@@ -22,27 +23,57 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!isLocale(lang)) notFound();
   const dict = getDictionary(lang);
-  const catalog = await getCatalog(lang);
-  const managed = await getManagedTranslations(lang, "home");
+  const [catalog, managed, mediaArticles] = await Promise.all([
+    getCatalog(lang),
+    getManagedTranslations(lang, "home"),
+    getMediaArticlesFromDatabase(lang),
+  ]);
   const t = (key: string, fallback: string) => managed[key]?.trim() || fallback;
   const fa = lang === "fa";
   const db = await createClient();
-  const [{data:heroRows=[]},{data:homeVideo}] = await Promise.all([db.from("homepage_hero_slides").select("*").eq("is_published",true).order("position"),db.from("homepage_video").select("*").eq("id",true).eq("is_published",true).maybeSingle()]);
-  const managedSlides:HomeSlide[]=(heroRows??[]).map(row=>({id:row.id,image_url:row.image_url,alt:fa?row.alt_fa:row.alt_en,kicker:fa?row.kicker_fa:row.kicker_en,title:fa?row.title_fa:row.title_en,subtitle:(fa?row.subtitle_fa:row.subtitle_en)??"",description:(fa?row.description_fa:row.description_en)??"",primaryLabel:(fa?row.primary_label_fa:row.primary_label_en)??"",primaryHref:row.primary_href,secondaryLabel:(fa?row.secondary_label_fa:row.secondary_label_en)??"",secondaryHref:row.secondary_href??"#factory"}));
-  const slides=managedSlides.length?managedSlides:[{id:-1,image_url:"/images/industrial-hero.webp",alt:dict.hero.sampleImage,kicker:t("hero.kicker",dict.hero.titleLead),title:t("hero.title",dict.hero.titleAccent),subtitle:t("hero.subtitle",dict.hero.eyebrow),description:t("hero.description",dict.hero.description),primaryLabel:dict.actions.viewProducts,primaryHref:"/products",secondaryLabel:dict.actions.aboutFactory,secondaryHref:"#factory"}];
-  const productImages = [
-    "/images/product-engine-oil-dst.jpg",
-    "/images/product-gear-oil-dst.jpg",
-    "/images/product-brake-fluid-dst.jpg",
-    "/images/product-antifreeze-dst.jpg",
-  ] as const;
-  const mediaImages = [
-    "/images/factory-teaser-cover.png",
-    "/images/product-engine-oil-dst.jpg",
-    "/images/product-gear-oil-dst.jpg",
-    "/images/product-antifreeze-dst.jpg",
-  ] as const;
-  const mediaSlugs = ["choosing-the-right-engine-oil", "why-standard-fluids-matter", "diyar-sanat-product-development-direction", "quality-control-process-overview"] as const;
+  const [{ data: heroRows = [] }, { data: homeVideo }] = await Promise.all([
+    db.from("homepage_hero_slides").select("*").eq("is_published", true).order("position"),
+    db.from("homepage_video").select("*").eq("id", true).eq("is_published", true).maybeSingle(),
+  ]);
+  const managedSlides: HomeSlide[] = (heroRows ?? []).map((row) => ({
+    id: row.id,
+    image_url: row.image_url,
+    alt: fa ? row.alt_fa : row.alt_en,
+    kicker: fa ? row.kicker_fa : row.kicker_en,
+    title: fa ? row.title_fa : row.title_en,
+    subtitle: (fa ? row.subtitle_fa : row.subtitle_en) ?? "",
+    description: (fa ? row.description_fa : row.description_en) ?? "",
+    primaryLabel: (fa ? row.primary_label_fa : row.primary_label_en) ?? "",
+    primaryHref: row.primary_href,
+    secondaryLabel: (fa ? row.secondary_label_fa : row.secondary_label_en) ?? "",
+    secondaryHref: row.secondary_href ?? "#factory",
+  }));
+  const slides = managedSlides.length
+    ? managedSlides
+    : [
+        {
+          id: -1,
+          image_url: "/images/industrial-hero.webp",
+          alt: dict.hero.sampleImage,
+          kicker: t("hero.kicker", dict.hero.titleLead),
+          title: t("hero.title", dict.hero.titleAccent),
+          subtitle: t("hero.subtitle", dict.hero.eyebrow),
+          description: t("hero.description", dict.hero.description),
+          primaryLabel: dict.actions.viewProducts,
+          primaryHref: "/products",
+          secondaryLabel: dict.actions.aboutFactory,
+          secondaryHref: "#factory",
+        },
+      ];
+
+  const featured = featuredProducts(catalog, 4);
+  const featuredIds = new Set(featured.map((item) => item.id));
+  const remainingProducts = catalog.categories
+    .flatMap((category) => category.products.map((product) => ({ ...product, category })))
+    .filter((product) => !featuredIds.has(product.id))
+    .sort((a, b) => a.position - b.position);
+  const homepageProducts = [...featured, ...remainingProducts].slice(0, 4);
+  const homepageMedia = mediaArticles.slice(0, 4);
 
   const metrics = [
     [fa ? "۴ گروه محصول" : "4 product groups", fa ? "سبد تخصصی محصولات خودرو" : "Specialist automotive range", FlaskIcon, "red"],
@@ -70,9 +101,17 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
 
   return (
     <main id="main-content" className="home-page">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c") }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c") }}
+      />
 
-      <HomepageHero locale={lang} slides={slides} badgeTitle={t("hero.badge_title",fa?"ساخت ایران":"Made in Iran")} badgeSubtitle={t("hero.badge_subtitle",fa?"حرکت به جلو":"Moving forward")}/>
+      <HomepageHero
+        locale={lang}
+        slides={slides}
+        badgeTitle={t("hero.badge_title", fa ? "ساخت ایران" : "Made in Iran")}
+        badgeSubtitle={t("hero.badge_subtitle", fa ? "حرکت به جلو" : "Moving forward")}
+      />
 
       <section className="metrics-wrap" aria-label={fa ? "شاخص‌های دیار صنعت" : "Diyar Sanat highlights"}>
         <ul className="metrics-panel" role="list">
@@ -91,21 +130,40 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             <span>{t("products.eyebrow", fa ? "محصولات ما" : "Our products")}</span>
             <h2>{t("products.title", fa ? "راهکارهای تخصصی برای عملکرد بهتر" : "Specialist solutions for better performance")}</h2>
           </div>
-          <div className="category-grid">
-            {catalog.categories.map((category, index) => (
-              <article key={category.id} className={`category-card product-tone-${index + 1}`}>
-                <div className="product-art">
-                  <Image src={productImages[index] ?? productImages[0]} alt={`${category.name} DST`} fill sizes="(max-width: 800px) 78vw, 300px" />
-                </div>
-                <div className="category-card-copy">
-                  <span className="product-category-icon"><CategoryIcon name={category.icon} className="size-5" /></span>
-                  <h3>{category.name}</h3>
-                  <p>{category.description}</p>
-                  <Link href={`/${lang}/products#${category.slug}`}>{dict.actions.viewProducts}<span><ChevronIcon className="directional-icon size-4" /></span></Link>
-                </div>
-              </article>
-            ))}
-          </div>
+          {homepageProducts.length ? (
+            <div className="category-grid">
+              {homepageProducts.map((product, index) => (
+                <article key={product.id} className={`category-card product-tone-${index + 1}`}>
+                  <div className="product-art">
+                    <Image
+                      src={product.imageUrl ?? productFallbackImage(product.category.code)}
+                      alt={product.name}
+                      fill
+                      sizes="(max-width: 800px) 78vw, 300px"
+                    />
+                  </div>
+                  <div className="category-card-copy">
+                    <span className="product-category-icon">
+                      <CategoryIcon name={product.category.icon} className="size-5" />
+                    </span>
+                    <h3>{product.name}</h3>
+                    {product.specification ? (
+                      <strong dir="ltr" style={{ color: "var(--red)", fontSize: "12px", marginBottom: "8px" }}>
+                        {product.specification}
+                      </strong>
+                    ) : null}
+                    <p>{product.description || product.category.description}</p>
+                    <Link href={`/${lang}/products/${product.slug}`}>
+                      {fa ? "مشاهده محصول" : "View product"}
+                      <span><ChevronIcon className="directional-icon size-4" /></span>
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">{fa ? "محصول منتشرشده‌ای برای نمایش وجود ندارد." : "No published products are available."}</p>
+          )}
           <Link className="button all-products" href={`/${lang}/products`}>
             {fa ? "مشاهده همه محصولات" : "View all products"}
             <span><ChevronIcon className="directional-icon size-4" /></span>
@@ -148,10 +206,10 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             <Link className="button button-secondary" href={`/${lang}#contact`}>{dict.actions.more}</Link>
           </div>
           <div className="factory-teaser" aria-label={fa ? "کاور تیزر معرفی کارخانه دیار صنعت تبریز" : "Diyar Sanat Tabriz factory teaser cover"}>
-            <Image src={homeVideo?.cover_url||"/images/factory-teaser-cover.png"} alt={fa ? "نمای سینمایی خط تولید و کارخانه دیار صنعت" : "Cinematic view of the Diyar Sanat production line and factory"} fill sizes="(max-width: 800px) 100vw, 68vw" />
-            {homeVideo?.video_url?<video className="factory-managed-video" controls preload="metadata" poster={homeVideo.cover_url??undefined}><source src={homeVideo.video_url}/></video>:null}
+            <Image src={homeVideo?.cover_url || "/images/factory-teaser-cover.png"} alt={fa ? "نمای سینمایی خط تولید و کارخانه دیار صنعت" : "Cinematic view of the Diyar Sanat production line and factory"} fill sizes="(max-width: 800px) 100vw, 68vw" />
+            {homeVideo?.video_url ? <video className="factory-managed-video" controls preload="metadata" poster={homeVideo.cover_url ?? undefined}><source src={homeVideo.video_url} /></video> : null}
             <div className="factory-teaser-shade" aria-hidden="true" />
-            <div className="teaser-caption"><span>{(fa?homeVideo?.title_fa:homeVideo?.title_en)||(fa?"تیزر معرفی کارخانه":"Factory introduction")}</span><strong>{(fa?homeVideo?.subtitle_fa:homeVideo?.subtitle_en)||(fa?"از تولید دقیق تا حرکت رو به جلو":"From precise production to moving forward")}</strong></div>
+            <div className="teaser-caption"><span>{(fa ? homeVideo?.title_fa : homeVideo?.title_en) || (fa ? "تیزر معرفی کارخانه" : "Factory introduction")}</span><strong>{(fa ? homeVideo?.subtitle_fa : homeVideo?.subtitle_en) || (fa ? "از تولید دقیق تا حرکت رو به جلو" : "From precise production to moving forward")}</strong></div>
             <span className="teaser-play" aria-hidden="true"><i /></span>
             <div className="teaser-controls" aria-hidden="true"><span className="teaser-progress"><i /></span><small dir="ltr">00:00</small></div>
           </div>
@@ -167,30 +225,36 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
       <section id="media" className="media-section section-space">
         <div className="container-wide">
           <div className="section-heading-row">
-            <div><span>{t("media.eyebrow",fa ? "مجله دیار صنعت" : "Diyar Sanat journal")}</span><h2>{t("media.title",fa ? "اخبار و تازه‌ها" : "News & insights")}</h2><p>{t("media.description",fa ? "تازه‌ترین مطالب تخصصی، رویدادها و راهنماهای مرتبط با محصولات" : "The latest technical articles, events, and product guidance")}</p></div>
+            <div><span>{t("media.eyebrow", fa ? "مجله دیار صنعت" : "Diyar Sanat journal")}</span><h2>{t("media.title", fa ? "اخبار و تازه‌ها" : "News & insights")}</h2><p>{t("media.description", fa ? "تازه‌ترین مطالب تخصصی، رویدادها و راهنماهای مرتبط با محصولات" : "The latest technical articles, events, and product guidance")}</p></div>
           </div>
-          <div className="media-grid">
-            {[...dict.media.items, dict.media.items[0]].map(([title, type], index) => (
-              <article className={index === 0 ? "media-featured" : "media-compact"} key={`${title}-${index}`}>
-                <Link className="media-cover" href={`/${lang}/media/${mediaSlugs[index]}`} aria-label={title}>
-                  <Image src={mediaImages[index] ?? mediaImages[0]} alt="" fill sizes={index === 0 ? "(max-width: 800px) 88vw, 58vw" : "(max-width: 800px) 72vw, 240px"} />
-                  <span>{type}</span>
-                </Link>
-                <div className="media-card-copy">
-                  <div className="media-meta"><time dateTime="2026-08-06">{fa ? "۱۵ مرداد ۱۴۰۵" : "August 6, 2026"}</time><span aria-hidden="true" /><small>{fa ? "۳ دقیقه مطالعه" : "3 min read"}</small></div>
-                  <h3>{title}</h3>
-                  <Link href={`/${lang}/media/${mediaSlugs[index]}`}>{fa ? "مطالعه مطلب" : "Read article"}<span><ChevronIcon className="directional-icon size-4" /></span></Link>
-                </div>
-              </article>
-            ))}
-          </div>
+          {homepageMedia.length ? (
+            <div className="media-grid">
+              {homepageMedia.map((article, index) => (
+                <article className={index === 0 ? "media-featured" : "media-compact"} key={article.slug}>
+                  <Link className="media-cover" href={`/${lang}/media/${article.slug}`} aria-label={article.title}>
+                    <Image src={article.image} alt="" fill sizes={index === 0 ? "(max-width: 800px) 88vw, 58vw" : "(max-width: 800px) 72vw, 240px"} />
+                    <span>{mediaKindLabel(lang, article.kind)}</span>
+                  </Link>
+                  <div className="media-card-copy">
+                    <div className="media-meta">
+                      <time dateTime={article.date}>{new Intl.DateTimeFormat(fa ? "fa-IR" : "en-US", { dateStyle: "medium" }).format(new Date(`${article.date}T12:00:00Z`))}</time>
+                      <span aria-hidden="true" />
+                      <small>{article.readingTime} {fa ? "دقیقه مطالعه" : "min read"}</small>
+                    </div>
+                    <h3>{article.title}</h3>
+                    <Link href={`/${lang}/media/${article.slug}`}>{fa ? "مطالعه مطلب" : "Read article"}<span><ChevronIcon className="directional-icon size-4" /></span></Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
           <Link className="media-more" href={`/${lang}/media`}>{fa ? "مشاهده همه اخبار و مقالات" : "View all news and articles"}<span><ChevronIcon className="directional-icon size-4" /></span></Link>
         </div>
       </section>
 
       <section id="certificates" className="certificate-strip section-space">
         <div className="container-wide certificate-panel">
-          <div className="certificate-copy"><span>{dict.navigation.certificates}</span><h2>{t("certificates.title",fa ? "مجوزها و استانداردهای مجموعه" : "Company licenses and standards")}</h2><p>{t("certificates.description",fa ? "شناسه‌های ثبتی و استانداردهای اعلام‌شده دیار صنعت تبریز" : "Declared registrations and standards of Diyar Sanat Tabriz")}</p></div>
+          <div className="certificate-copy"><span>{dict.navigation.certificates}</span><h2>{t("certificates.title", fa ? "مجوزها و استانداردهای مجموعه" : "Company licenses and standards")}</h2><p>{t("certificates.description", fa ? "شناسه‌های ثبتی و استانداردهای اعلام‌شده دیار صنعت تبریز" : "Declared registrations and standards of Diyar Sanat Tabriz")}</p></div>
           <ul className="certificate-list" role="list">{credentials.map(([title, value, tone]) => <li className={`credential-${tone}`} key={value}><span className="credential-icon"><ShieldIcon className="size-6" /></span><span className="credential-copy"><small>{title}</small><strong dir="ltr">{value}</strong></span></li>)}</ul>
         </div>
       </section>

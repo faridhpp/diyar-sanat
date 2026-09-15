@@ -3,6 +3,16 @@
 Update this file with every feature, bug fix, schema change, or architecture
 decision. Newest entries go first.
 
+## 2026-09-15 — Managed public content synchronization
+
+- Unified the public media experience with the editorial database: article detail pages, related articles, and homepage journal cards now consume published `editorial_entries`/`editorial_translations` instead of static-only article records.
+- Added idempotent data migration `drizzle/0002_seed_editorial_content.sql` so the four existing public articles are imported into the editorial tables and become visible/editable in `/admin/editorial` after deployment.
+- Connected site identity settings to rendered branding. `header_logo_url` and the localized site title now drive the public header (including mobile), while `admin_logo_url` and `login_logo_url` are used by the admin shell and login screen.
+- Replaced the homepage's hard-coded product images/category copy with up to four real published catalog products, prioritizing featured products and rendering each managed image, localized name, description, key specification, and product detail link.
+- Product and editorial writes now invalidate the public layout so homepage/header/media changes are visible after admin saves without requiring a redeploy.
+- Affected: `app/[lang]/page.tsx`, `app/[lang]/media/[slug]/page.tsx`, site/admin identity components and layouts, product/editorial actions, site-settings copy, and Drizzle migration journal.
+- Verification: static code/data-flow review completed against branch `next`. Local pnpm lint/typecheck/build could not be run because the execution container could not resolve `github.com`; no production database or deployment was changed by this patch.
+
 ## 2026-09-05 — Single Dockerfile deployment with existing Dokploy PostgreSQL
 
 - Replaced the Compose deployment with one Dockerfile application connected to
@@ -202,7 +212,7 @@ decision. Newest entries go first.
 
 - Increased administration typography and control sizing across navigation, dashboards, lists, forms, and mobile layouts.
 - Consolidated duplicate news, articles, and media-category navigation into one `News & articles` workspace.
-- Added a protected Supabase Storage bucket with MIME/size restrictions and staff-only mutation policies, plus an authenticated upload endpoint and reusable upload control; product images and datasheets no longer require pasted URLs.
+- Added a protected Supabase Storage bucket with MIME/size restrictions and staff-only mutation policies, plus an authenticated upload endpoint and reusable upload control; product images and datasheets no longer require pasted file URLs.
 - Replaced the disabled staff invitation control with operational manager-only user creation through the server-side Supabase Admin API, including strong-password validation, role selection, rollback on profile failure, and no browser exposure of the secret key.
 - Migration: `20260807111348_secure_media_storage.sql`. Added server-only `SUPABASE_SECRET_KEY` configuration.
 
